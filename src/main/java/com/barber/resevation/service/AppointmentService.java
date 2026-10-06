@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class AppointmentService {
@@ -58,5 +61,29 @@ public class AppointmentService {
         timeSlotRepository.save(slot);
 
         appointmentRepository.save(appointment);
+    }
+
+    // Admin: Belirli bir günün randevularını listeleme
+    @Transactional(readOnly = true)
+    public List<Appointment> getDailyAppointments(LocalDate date) {
+        return appointmentRepository.findAppointmentsByDate(date);
+    }
+
+    // Admin: Randevu durumunu güncelleme (COMPLETED / CANCELLED vs.)
+    @Transactional
+    public Appointment updateStatus(Long id, String newStatus) {
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Randevu bulunamadı."));
+
+        appointment.setStatus(newStatus.toUpperCase());
+
+        // Eğer yönetici randevuyu "CANCELLED" yaparsa, slotu tekrar boşa çıkar
+        if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+            TimeSlot slot = appointment.getTimeSlot();
+            slot.setBooked(false);
+            timeSlotRepository.save(slot);
+        }
+
+        return appointmentRepository.save(appointment);
     }
 }

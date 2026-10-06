@@ -28,4 +28,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findAppointmentsInTimeRangeFor30Mins(@Param("today") LocalDate today,
                                                            @Param("start") LocalTime start,
                                                            @Param("end") LocalTime end);
+    // Admin için seçilen günün randevularını saate göre sıralı getirir
+    @Query("SELECT a FROM Appointment a WHERE a.timeSlot.slotDate = :date ORDER BY a.timeSlot.startTime ASC")
+    List<Appointment> findAppointmentsByDate(@Param("date") LocalDate date);
 }
