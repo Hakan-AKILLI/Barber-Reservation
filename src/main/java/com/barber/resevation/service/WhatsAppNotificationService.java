@@ -43,7 +43,7 @@ public class WhatsAppNotificationService {
         // Eğer başında + yoksa (Örn: 90538... veya 538...), + ekle
         else if (!formattedNumber.startsWith("+")) {
             // Eğer 90 ile başlamıyorsa 90 ekleyelim, başlıyorsa sadece + koyalım
-            if(!formattedNumber.startsWith("90")) {
+            if (!formattedNumber.startsWith("90")) {
                 formattedNumber = "+90" + formattedNumber;
             } else {
                 formattedNumber = "+" + formattedNumber;
@@ -63,6 +63,41 @@ public class WhatsAppNotificationService {
             log.info("WhatsApp mesajı başarıyla gönderildi: {}", response);
         } catch (Exception e) {
             log.error("WhatsApp mesajı gönderilirken hata oluştu: {}", e.getMessage());
+        }
+    }
+
+    public void sendAppointmentCancellation(String toPhoneNumber) {
+        String url = "https://api.twilio.com/2010-04-01/Accounts/" + accountSid + "/Messages.json";
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setBasicAuth(accountSid, authToken);
+
+        // --- TELEFON NUMARASI FORMATLAMA ---
+        String formattedNumber = toPhoneNumber.trim();
+        if (formattedNumber.startsWith("0")) {
+            formattedNumber = "+90" + formattedNumber.substring(1);
+        } else if (!formattedNumber.startsWith("+")) {
+            if (!formattedNumber.startsWith("90")) {
+                formattedNumber = "+90" + formattedNumber;
+            } else {
+                formattedNumber = "+" + formattedNumber;
+            }
+        }
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("From", fromNumber);
+        body.add("To", "whatsapp:" + formattedNumber);
+        body.add("ContentSid", contentSid);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+        try {
+            String response = restTemplate.postForObject(url, request, String.class);
+            log.info("İptal WhatsApp mesajı başarıyla gönderildi: {}", response);
+        } catch (Exception e) {
+            log.error("İptal WhatsApp mesajı gönderilirken bilinmeyen hata: {}", e.getMessage());
         }
     }
 }

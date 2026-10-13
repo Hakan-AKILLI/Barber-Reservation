@@ -72,6 +72,8 @@ public class AppointmentService {
         timeSlotRepository.save(slot);
 
         appointmentRepository.save(appointment);
+//  WhatsApp İptal Mesajı Gönderme ---
+        whatsAppNotificationService.sendAppointmentCancellation(appointment.getCustomerPhone());
     }
 
     // Admin: Belirli bir günün randevularını listeleme
