@@ -5,6 +5,7 @@ import com.barber.resevation.entity.Appointment;
 import com.barber.resevation.entity.TimeSlot;
 import com.barber.resevation.service.AppointmentService;
 import com.barber.resevation.service.TimeSlotService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +20,7 @@ import java.util.List;
 @RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
+@SecurityRequirement(name = "Bearer Authentication")
 public class AdminController {
 
     private final AppointmentService appointmentService;
