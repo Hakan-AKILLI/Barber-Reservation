@@ -19,6 +19,9 @@ public class AppointmentService {
     private final AppointmentRepository appointmentRepository;
     private final TimeSlotRepository timeSlotRepository;
 
+    // 1. WhatsApp servisini projeye enjekte ediyoruz
+    private final WhatsAppNotificationService whatsAppNotificationService;
+
     @Transactional
     public Appointment bookAppointment(AppointmentBookingRequest request) {
         // 1. Slot var mı ve müsait mi kontrol et
@@ -45,7 +48,15 @@ public class AppointmentService {
                 .timeSlot(slot)
                 .build();
 
-        return appointmentRepository.save(appointment);
+        // Veritabanına kaydet ve kaydedilen objeyi bir değişkene al
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        // 4. WhatsApp üzerinden randevu onay mesajını gönder
+        // Müşterinin formda girdiği telefon numarasına dinamik olarak mesaj atılacak.
+        // Not: Numaranın "+90538..." formatında geldiğinden emin olmalısın.
+        whatsAppNotificationService.sendAppointmentConfirmation(savedAppointment.getCustomerPhone());
+
+        return savedAppointment;
     }
 
     @Transactional
