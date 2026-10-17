@@ -18,8 +18,6 @@ public class AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final TimeSlotRepository timeSlotRepository;
-
-    // 1. WhatsApp servisini projeye enjekte ediyoruz
     private final WhatsAppNotificationService whatsAppNotificationService;
 
     @Transactional
@@ -42,6 +40,7 @@ public class AppointmentService {
 
         // 3. Randevuyu kaydet
         Appointment appointment = Appointment.builder()
+                .shop(slot.getShop()) // KRİTİK EKLENTİ: Randevuyu slotun ait olduğu dükkana bağlıyoruz
                 .customerName(request.getCustomerName())
                 .customerPhone(request.getCustomerPhone())
                 .serviceType(request.getServiceType())
@@ -52,8 +51,6 @@ public class AppointmentService {
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
         // 4. WhatsApp üzerinden randevu onay mesajını gönder
-        // Müşterinin formda girdiği telefon numarasına dinamik olarak mesaj atılacak.
-        // Not: Numaranın "+90538..." formatında geldiğinden emin olmalısın.
         whatsAppNotificationService.sendAppointmentConfirmation(savedAppointment.getCustomerPhone());
 
         return savedAppointment;
@@ -61,6 +58,7 @@ public class AppointmentService {
 
     @Transactional
     public void cancelAppointment(String cancellationCode) {
+        // İptal kodu zaten eşsiz (unique) olduğu için burada shopId'ye gerek yok.
         Appointment appointment = appointmentRepository.findByCancellationCode(cancellationCode)
                 .orElseThrow(() -> new IllegalArgumentException("Geçersiz iptal kodu."));
 
@@ -72,21 +70,27 @@ public class AppointmentService {
         timeSlotRepository.save(slot);
 
         appointmentRepository.save(appointment);
-//  WhatsApp İptal Mesajı Gönderme ---
+
+        // WhatsApp İptal Mesajı Gönderme
         whatsAppNotificationService.sendAppointmentCancellation(appointment.getCustomerPhone());
     }
 
-    // Admin: Belirli bir günün randevularını listeleme
+    // Admin: Belirli bir dükkanın ve günün randevularını listeleme
     @Transactional(readOnly = true)
-    public List<Appointment> getDailyAppointments(LocalDate date) {
-        return appointmentRepository.findAppointmentsByDate(date);
+    public List<Appointment> getDailyAppointments(Long shopId, LocalDate date) {
+        return appointmentRepository.findAppointmentsByShopAndDate(shopId, date);
     }
 
     // Admin: Randevu durumunu güncelleme (COMPLETED / CANCELLED vs.)
     @Transactional
-    public Appointment updateStatus(Long id, String newStatus) {
+    public Appointment updateStatus(Long shopId, Long id, String newStatus) { // shopId parametresi eklendi
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Randevu bulunamadı."));
+
+        // GÜVENLİK KONTROLÜ: İşlem yapılmak istenen randevu, işlemi yapan adminin dükkanına mı ait?
+        if (!appointment.getShop().getId().equals(shopId)) {
+            throw new IllegalStateException("Bu randevu üzerinde işlem yapma yetkiniz bulunmuyor.");
+        }
 
         appointment.setStatus(newStatus.toUpperCase());
 

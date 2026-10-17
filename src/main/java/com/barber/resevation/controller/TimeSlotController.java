@@ -22,10 +22,11 @@ public class TimeSlotController {
 
     private final TimeSlotService timeSlotService;
 
-    // Müşterinin boş saatleri çekmesi: GET /api/v1/slots/available?date=2026-09-17
+    // Müşterinin boş saatleri çekmesi: GET /api/v1/slots/available?shopId=1&date=2026-09-17
     @GetMapping("/available")
     public ResponseEntity<List<TimeSlot>> getAvailableSlots(
+            @RequestParam Long shopId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(timeSlotService.getAvailableSlots(date));
+        return ResponseEntity.ok(timeSlotService.getAvailableSlots(shopId, date));
     }
 }

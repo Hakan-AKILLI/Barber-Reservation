@@ -11,7 +11,20 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
+
+    // Müşterinin kendi randevusunu iptal koduyla bulması (Kod zaten benzersiz olmalı)
     Optional<Appointment> findByCancellationCode(String cancellationCode);
+
+    // YENİ: Belirli bir dükkanın tüm randevularını getir
+    List<Appointment> findByShopId(Long shopId);
+
+    // GÜNCELLENDİ: Admin için SEÇİLEN DÜKKANIN ve seçilen günün randevularını saate göre sıralı getirir
+    @Query("SELECT a FROM Appointment a WHERE a.shop.id = :shopId AND a.timeSlot.slotDate = :date ORDER BY a.timeSlot.startTime ASC")
+    List<Appointment> findAppointmentsByShopAndDate(@Param("shopId") Long shopId, @Param("date") LocalDate date);
+
+    // --- SİSTEM GENELİ OTOMATİK HATIRLATICI (CRON) SORGULARI ---
+    // (Bunlar tüm dükkanlardaki müşterileri tarayıp toplu hatırlatma atmak için aynı kalabilir)
+
     // Yarınki randevuları bul (1 Gün Öncesi için)
     @Query("SELECT a FROM Appointment a WHERE a.status = 'CONFIRMED' AND a.timeSlot.slotDate = :tomorrow AND a.reminder1DaySent = false")
     List<Appointment> findAppointmentsForTomorrow(@Param("tomorrow") LocalDate tomorrow);
@@ -28,7 +41,4 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findAppointmentsInTimeRangeFor30Mins(@Param("today") LocalDate today,
                                                            @Param("start") LocalTime start,
                                                            @Param("end") LocalTime end);
-    // Admin için seçilen günün randevularını saate göre sıralı getirir
-    @Query("SELECT a FROM Appointment a WHERE a.timeSlot.slotDate = :date ORDER BY a.timeSlot.startTime ASC")
-    List<Appointment> findAppointmentsByDate(@Param("date") LocalDate date);
 }

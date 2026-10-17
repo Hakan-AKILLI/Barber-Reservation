@@ -17,7 +17,7 @@ public class TimeSlotCleanupTask {
 
     // "Saniye Dakika Saat Gün Ay HaftanınGünü" formatı
     // 0 0 3 * * ? -> Her gün gece saat 03:00'te çalışır
-    @Scheduled(fixedRate = 300000)
+    @Scheduled(cron = "0 0 3 * * ?")
     public void cleanUpPastUnbookedSlots() {
         log.info("Geçmiş tarihli boş randevu slotlarını temizleme işlemi başlatıldı...");
 
