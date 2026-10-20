@@ -51,7 +51,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/slots/available", "/api/v1/appointments/**")
+                        // /api/v1/shops/** ve slug isteklerini buraya ekledik:
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/slots/available", "/api/v1/appointments/**", "/api/v1/shops/**")
                         .permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                         .permitAll()

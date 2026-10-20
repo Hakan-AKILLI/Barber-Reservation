@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getAvailableSlots, bookAppointment } from './services/api';
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
+import { getAvailableSlots, bookAppointment, getShopBySlug, adminLogin } from './services/api';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 interface Shop {
   id: number;
@@ -20,7 +23,13 @@ interface TimeSlot {
   shop: Shop;
 }
 
-export default function App() {
+// Ana Ekran Bileşenimiz (BookingPage)
+function BookingPage() {
+  const { slug } = useParams<{ slug: string }>(); 
+  const navigate = useNavigate();
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [shopError, setShopError] = useState(false);
+
   const getFormattedDate = (addDays: number) => {
     const date = new Date();
     date.setDate(date.getDate() + addDays);
@@ -46,22 +55,46 @@ export default function App() {
   const [slots, setSlots] = useState<TimeSlot[]>([]); 
   const [loading, setLoading] = useState(false);
   
-  // Modal ve Form State'leri
+  // Randevu Modal & Form State'leri
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [serviceType, setServiceType] = useState(''); // backend'in beklediği alan adı
-  const [pnrCode, setPnrCode] = useState<string | null>(null); // İşlem başarılıysa kod buraya gelecek
+  const [serviceType, setServiceType] = useState(''); 
+  const [pnrCode, setPnrCode] = useState<string | null>(null); 
   const [isBooking, setIsBooking] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const shopId = 1; 
 
+  // Berber Giriş Modal State'leri
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState(false);
+
+  // Dükkan Bilgisini Çek
+  useEffect(() => {
+    const fetchShop = async () => {
+      if (!slug) return;
+      try {
+        const shopData = await getShopBySlug(slug);
+        setShop(shopData);
+      } catch (error) {
+        console.error("Dükkan bulunamadı:", error);
+        setShopError(true);
+      }
+    };
+    fetchShop();
+  }, [slug]);
+
+  // Saatleri Çek
   useEffect(() => {
     const fetchSlots = async () => {
+      if (!shop) return; 
+      
       setLoading(true);
       try {
-        const data = await getAvailableSlots(shopId, selectedDate);
+        const data = await getAvailableSlots(shop.id, selectedDate);
         setSlots(data);
       } catch (error) {
         console.error("Saatler çekilemedi:", error);
@@ -72,15 +105,14 @@ export default function App() {
     };
 
     fetchSlots();
-  }, [selectedDate, refreshKey]);
+  }, [selectedDate, refreshKey, shop]);
 
-  // Randevu oluşturma fonksiyonu
+  // Randevu Oluştur
   const handleBook = async () => {
-    if (!selectedSlot || !customerName || !customerPhone || !serviceType) {
+    if (!selectedSlot || !customerName || !customerPhone || !serviceType || !shop) {
       alert("Lütfen ad, telefon ve talep alanlarını doldurun.");
       return;
     }
-  
     
     setIsBooking(true);
     try {
@@ -92,9 +124,7 @@ export default function App() {
       };
       
       const result = await bookAppointment(payload);
-      
-      // Backend başarılı yanıtta { cancellationCode: 'XYZ123' } dönüyorsa (backend'in dönüşüne göre burayı güncelleyebiliriz):
-      setPnrCode(result.cancellationCode || "KOD-ALINAMADI");
+      setPnrCode(result.cancellationCode || result.pnrCode || "KOD-ALINAMADI");
       
     } catch (error) {
       console.error("Randevu oluşturulurken hata:", error);
@@ -103,11 +133,42 @@ export default function App() {
       setIsBooking(false);
     }
   };
+
+  // Berber Girişi Yap
+  const handleAdminLogin = async () => {
+    if (!adminUsername || !adminPassword) {
+      setLoginError(true);
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setLoginError(false);
+    try {
+      const response = await adminLogin({ username: adminUsername, password: adminPassword });
+      const token = response.token || response;
+      localStorage.setItem('adminToken', typeof token === 'string' ? token : JSON.stringify(token));
+      
+      setIsLoginOpen(false);
+      setAdminUsername('');
+      setAdminPassword('');
+      setLoginError(false);
+
+      // Başarılı giriş sonrası admin paneline yönlendir
+      navigate(`/${slug}/admin`);
+      
+    } catch (error) {
+      console.error("Giriş hatası:", error);
+      setLoginError(true);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
   const handleCopy = async () => {
     if (pnrCode) {
       await navigator.clipboard.writeText(pnrCode);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000); // 2 saniye sonra yazıyı eski haline döndür
+      setTimeout(() => setIsCopied(false), 2000); 
     }
   };
 
@@ -118,22 +179,46 @@ export default function App() {
     setCustomerPhone('');
     setServiceType('');
   };
+
   const handleReturnHome = () => {
-    closeModal(); // Modalı ve form verilerini sıfırla
-    setRefreshKey(prev => prev + 1); // refreshKey'i değiştirerek useEffect'i tetikle
+    closeModal(); 
+    setRefreshKey(prev => prev + 1); 
   };
+
+  if (shopError) {
+    return (
+      <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center">
+        <h1 className="text-3xl font-black uppercase text-red-600 tracking-widest">
+          DÜKKAN BULUNAMADI
+        </h1>
+      </div>
+    );
+  }
+
+  if (!shop) {
+    return (
+      <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center">
+        <h1 className="text-2xl font-bold uppercase animate-pulse tracking-widest">
+          DÜKKAN YÜKLENİYOR...
+        </h1>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
       <header className="flex justify-between items-center px-8 py-5 border-b border-gray-300">
         <h1 className="text-3xl font-black tracking-widest uppercase">
-          BERBER ADI
+          {shop.name}
         </h1>
         <div className="flex gap-4">
           <button className="px-6 py-2 border border-gray-900 text-gray-900 font-bold hover:bg-gray-100 transition">
             Randevu İptal
           </button>
-          <button className="px-6 py-2 bg-[#1A1A1A] text-white font-bold hover:bg-black transition">
+          <button 
+            onClick={() => setIsLoginOpen(true)}
+            className="px-6 py-2 bg-[#1A1A1A] text-white font-bold hover:bg-black transition"
+          >
             Berber Girişi
           </button>
         </div>
@@ -190,18 +275,17 @@ export default function App() {
         </div>
 
         <div className="hidden lg:flex w-[35%] bg-[#EBE9E1] border-l border-dashed border-gray-400 items-center justify-center">
-          <span className="text-gray-500 font-medium tracking-widest">
-            [ BERBER FOTOĞRAFI ]
+          <span className="text-gray-500 font-medium tracking-widest text-center px-4">
+            [ {shop.name} FOTOĞRAFI ]
           </span>
         </div>
       </main>
 
-      {/* KARARTILMIŞ ARKA PLAN VE MODAL */}
+      {/* 1. RANDEVU ONAY MODALI */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-[#F6F5EFFF] flex flex-col md:flex-row gap-8 p-8 w-full max-w-4xl shadow-2xl relative">
             
-            {/* SOL TARAF: FORM ALANI */}
             <div className="flex-1">
               <h3 className="text-3xl font-black uppercase tracking-tighter mb-6">
                 RANDEVU ONAYI
@@ -211,7 +295,6 @@ export default function App() {
                 [{selectedSlot.slotDate}] • [{selectedSlot.startTime.slice(0, 5)}]
               </div>
 
-              {/* Eğer PNR kodu alındıysa formu gizle, sadece sağ tarafı göster */}
               {!pnrCode && (
                 <div className="space-y-4">
                   <div>
@@ -245,7 +328,6 @@ export default function App() {
                     />
                   </div>
                   
-                  {/* reCAPTCHA Placeholder */}
                   <div className="border border-dashed border-gray-400 p-6 text-center text-gray-500 mb-6 mt-4">
                     reCAPTCHA
                   </div>
@@ -269,7 +351,6 @@ export default function App() {
               )}
             </div>
 
-{/* SAĞ TARAF: BAŞARI VE PNR KODU ALANI */}
             {pnrCode && (
               <div className="flex-1 border-2 border-[#1A1A1A] p-8 flex flex-col justify-center bg-white relative">
                 <h4 className="text-xl font-black uppercase tracking-wide mb-2">
@@ -279,7 +360,6 @@ export default function App() {
                   İptal etmek isterseniz kodunuz:
                 </p>
                 
-                {/* Güncellenmiş Kesik Çizgili Kutu ve Kopyala Butonu */}
                 <div className="border-2 border-dashed border-[#1A1A1A] py-6 flex flex-col items-center justify-center">
                   <span className="text-4xl font-black tracking-widest mb-4">
                     [ {pnrCode} ]
@@ -297,9 +377,9 @@ export default function App() {
                 </div>
 
                 <button 
-                 onClick={handleReturnHome} // closeModal yerine handleReturnHome geldi
-                 className="mt-8 bg-[#1A1A1A] text-white py-3 px-6 font-bold hover:bg-black w-full"
-                  >
+                  onClick={handleReturnHome}
+                  className="mt-8 bg-[#1A1A1A] text-white py-3 px-6 font-bold hover:bg-black w-full"
+                >
                   ANA SAYFAYA DÖN
                 </button>
               </div>
@@ -307,6 +387,95 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 2. BERBER GİRİŞ MODALI */}
+      {isLoginOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#F6F5EFFF] p-8 w-full max-w-md shadow-2xl relative border-2 border-[#1A1A1A]">
+            
+            <h3 className="text-2xl font-black uppercase tracking-tighter mb-2">
+              BERBER GİRİŞİ
+            </h3>
+            <p className="text-gray-600 text-sm mb-6">
+              Yönetim paneline erişmek için giriş yapın.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-1">Kullanıcı Adı</label>
+                <input 
+                  type="text" 
+                  placeholder="admin" 
+                  value={adminUsername}
+                  onChange={(e) => {
+                    setAdminUsername(e.target.value);
+                    if (loginError) setLoginError(false);
+                  }}
+                  className={`w-full border p-3 outline-none transition-colors bg-white ${
+                    loginError ? 'border-red-600 border-2' : 'border-gray-300 focus:border-[#1A1A1A]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Şifre</label>
+                <input 
+                  type="password" 
+                  placeholder="••••••" 
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    if (loginError) setLoginError(false);
+                  }}
+                  className={`w-full border p-3 outline-none transition-colors bg-white ${
+                    loginError ? 'border-red-600 border-2' : 'border-gray-300 focus:border-[#1A1A1A]'
+                  }`}
+                />
+                {loginError && (
+                  <p className="text-red-600 text-xs font-bold mt-1.5 uppercase tracking-wide">
+                    Kullanıcı adı ya da şifre yanlış.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={() => {
+                    setIsLoginOpen(false);
+                    setLoginError(false);
+                  }}
+                  className="flex-1 border-2 border-[#1A1A1A] py-3 font-bold text-[#1A1A1A] hover:bg-gray-200 transition-colors"
+                >
+                  İptal
+                </button>
+                <button 
+                  onClick={handleAdminLogin}
+                  disabled={isLoggingIn}
+                  className="flex-1 bg-[#1A1A1A] border-2 border-[#1A1A1A] text-white py-3 font-bold hover:bg-black transition-colors disabled:opacity-50"
+                >
+                  {isLoggingIn ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
+  );
+}
+
+// Ana App Bileşeni ve Yönlendirmeler
+export default function App() {
+  return (
+    <Routes>
+      {/* Müşteri Randevu Sayfası */}
+      <Route path="/:slug" element={<BookingPage />} />
+
+      {/* Berber Yönetim Paneli */}
+      <Route path="/:slug/admin" element={<AdminLayout />}>
+        <Route index element={<AdminDashboard />} />
+      </Route>
+    </Routes>
   );
 }
