@@ -3,6 +3,8 @@ import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { getAvailableSlots, bookAppointment, getShopBySlug, adminLogin } from './services/api';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminWorkingHours from './pages/admin/AdminWorkingHours';
+import AdminCalendar from './pages/admin/AdminCalendar';
 
 interface Shop {
   id: number;
@@ -468,14 +470,16 @@ function BookingPage() {
 // Ana App Bileşeni ve Yönlendirmeler
 export default function App() {
   return (
-    <Routes>
-      {/* Müşteri Randevu Sayfası */}
-      <Route path="/:slug" element={<BookingPage />} />
+<Routes>
+  {/* Müşteri Randevu Sayfası */}
+  <Route path="/:slug" element={<BookingPage />} />
 
-      {/* Berber Yönetim Paneli */}
-      <Route path="/:slug/admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboard />} />
-      </Route>
-    </Routes>
+  {/* Berber Yönetim Paneli */}
+  <Route path="/:slug/admin" element={<AdminLayout />}>
+    <Route index element={<AdminDashboard />} />
+    <Route path="working-hours" element={<AdminWorkingHours />} />
+    <Route path="calendar" element={<AdminCalendar />} /> {/* <-- BU SATIRI EKLEYİN */}
+  </Route>
+</Routes>
   );
 }

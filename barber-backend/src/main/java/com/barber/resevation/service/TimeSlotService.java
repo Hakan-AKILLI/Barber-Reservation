@@ -75,4 +75,24 @@ public class TimeSlotService {
 
         return timeSlotRepository.saveAll(slots);
     }
+    // Berberin boş slot silmesi
+    @Transactional
+    public void deleteSlot(Long slotId, Long shopId) {
+        // 1. Slotun var olup olmadığını buluyoruz
+        TimeSlot slot = timeSlotRepository.findById(slotId)
+                .orElseThrow(() -> new RuntimeException("Slot bulunamadı!"));
+
+        // 2. Güvenlik Kontrolü: Slot gerçekten bu dükkana mı ait?
+        if (!slot.getShop().getId().equals(shopId)) {
+            throw new RuntimeException("Bu slot belirtilen dükkana ait değil!");
+        }
+
+        // 3. Randevu Kontrolü: Dolu slotların silinmesini engelliyoruz
+        if (Boolean.TRUE.equals(slot.isBooked())) {
+            throw new RuntimeException("Dolu olan bir slot silinemez! Önce randevuyu iptal etmelisiniz.");
+        }
+
+        // 4. Slotu veritabanından siliyoruz
+        timeSlotRepository.delete(slot);
+    }
 }

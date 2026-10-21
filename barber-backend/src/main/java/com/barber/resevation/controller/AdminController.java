@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,5 +71,13 @@ public class AdminController {
             @RequestParam int duration) {
 
         return ResponseEntity.ok(timeSlotService.generateSlots(shopId, date, start, end, duration));
+    }
+    // Berberin boş slot silmesi: DELETE /api/v1/admin/slots/{id}
+    @DeleteMapping("/slots/{id}")
+    public ResponseEntity<Void> deleteSlot(
+            @PathVariable Long id,
+            @RequestParam Long shopId) {
+        timeSlotService.deleteSlot(id, shopId);
+        return ResponseEntity.noContent().build();
     }
 }
