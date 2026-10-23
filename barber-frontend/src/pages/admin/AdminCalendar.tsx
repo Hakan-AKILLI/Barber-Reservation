@@ -1,24 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
   getShopBySlug, 
   getAdminAppointments, 
   getAvailableSlots, 
   createSingleSlot,
-  type Appointment 
+  type Appointment,
 } from '../../services/api';
-
-interface TimeSlot {
-  id: number;
-  slotDate: string;
-  startTime: string;
-  endTime: string;
-  booked: boolean;
-  active: boolean;
-}
+import type { TimeSlot} from '../../types';
 
 export default function AdminCalendar() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [shopId, setShopId] = useState<number | null>(null);
 
   // Tarih ve Takvim Navigasyon State'leri
@@ -27,8 +20,10 @@ export default function AdminCalendar() {
   
   // Veri State'leri (Aktif Ay İçin)
   const [monthAppointments, setMonthAppointments] = useState<Appointment[]>([]);
+  const [monthSlots, setMonthSlots] = useState<TimeSlot[]>([]); // YENİ: Ayın tüm boş/dolu slotları
   const [closedDays, setClosedDays] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // YENİ: Slot eklenince takvimi anında yenilemek için
 
   // Seçili Gün Detay Paneli (Drawer)
   const [selectedDayAppointments, setSelectedDayAppointments] = useState<Appointment[]>([]);
@@ -55,15 +50,14 @@ export default function AdminCalendar() {
 
   // Ay Bilgileri Hesaplama
   const year = currentDate.getFullYear();
-  const month = currentDate.getMonth(); // 0-11
+  const month = currentDate.getMonth();
   const monthName = currentDate.toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
 
-  // Ayın günlerini oluşturma
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfWeek = new Date(year, month, 1).getDay();
-  const startingOffset = (firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1);
+  const startingOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
 
-  // 2. Seçili ayın verilerini yükle
+  // 2. Seçili ayın verilerini yükle (Randevular + Slotlar)
   useEffect(() => {
     if (!shopId) return;
 
@@ -72,10 +66,16 @@ export default function AdminCalendar() {
       setLoading(true);
       try {
         const startDateStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-        const appData = await getAdminAppointments(shopId, startDateStr);
+        
+        // Backend'in startDateStr ile tüm ayın verilerini getirdiğini varsayıyoruz
+        const [appData, slotData] = await Promise.all([
+          getAdminAppointments(shopId, startDateStr),
+          getAvailableSlots(shopId, startDateStr) 
+        ]);
 
         if (isMounted) {
           setMonthAppointments(appData);
+          setMonthSlots(slotData);
         }
       } catch (error) {
         console.error('Ay verileri çekilemedi:', error);
@@ -86,16 +86,10 @@ export default function AdminCalendar() {
 
     fetchMonthData();
     return () => { isMounted = false; };
-  }, [shopId, year, month]);
+  }, [shopId, year, month, refreshKey]); // refreshKey eklendi
 
-  // Ay değiştirme fonksiyonları
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(year, month - 1, 1));
-  };
-
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(year, month + 1, 1));
-  };
+  const handlePrevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const handleNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
   // Güne Tıklama (Detay Çekmecesini Açma)
   const handleDayClick = async (dayNumber: number) => {
@@ -116,7 +110,10 @@ export default function AdminCalendar() {
     }
   };
 
-  // Günü Kapat / Aç Toggle
+  const handleNavigateToDashboard = () => {
+    if (selectedDateStr) navigate(`/${slug}/admin?date=${selectedDateStr}`);
+  };
+
   const toggleCloseDay = (dateStr: string) => {
     if (closedDays.includes(dateStr)) {
       setClosedDays(closedDays.filter(d => d !== dateStr));
@@ -139,12 +136,16 @@ export default function AdminCalendar() {
       setQuickStart('');
       setQuickEnd('');
 
+      // Çekmecedeki verileri güncelle
       const [appData, slotData] = await Promise.all([
         getAdminAppointments(shopId, selectedDateStr),
         getAvailableSlots(shopId, selectedDateStr)
       ]);
       setSelectedDayAppointments(appData);
       setSelectedDaySlots(slotData);
+
+      // Ana takvimi de yenilemek için tetikle
+      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Slot oluşturulamadı:', error);
     }
@@ -156,46 +157,19 @@ export default function AdminCalendar() {
         TAKVİM
       </h2>
 
-      {/* KONTROL PANELI */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8 bg-white border border-gray-200 p-4 shadow-sm">
         <div className="flex items-center gap-2">
-          <button 
-            onClick={handlePrevMonth}
-            className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer"
-          >
-            ‹
-          </button>
-          <button 
-            onClick={handleNextMonth}
-            className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer"
-          >
-            ›
-          </button>
+          <button onClick={handlePrevMonth} className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer">‹</button>
+          <button onClick={handleNextMonth} className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer">›</button>
           <span className="text-xl font-black uppercase tracking-wider ml-4 text-[#1A1A1A]">
             {monthName}
           </span>
         </div>
-
-        <div className="flex items-center border border-[#1A1A1A]">
-          <button className="px-5 py-2 font-bold text-sm bg-gray-100 text-[#1A1A1A] border-r border-[#1A1A1A]">
-            Haftalık
-          </button>
-          <button className="px-5 py-2 font-bold text-sm bg-[#1A1A1A] text-white">
-            Aylık
-          </button>
-        </div>
       </div>
 
-      {/* TAKVİM IZGARASI */}
       <div className="bg-white border border-gray-200 shadow-sm overflow-hidden">
         <div className="grid grid-cols-7 border-b border-gray-200 bg-[#F5F4EF] text-center font-black text-sm uppercase py-3 text-[#1A1A1A]">
-          <div>Pzt</div>
-          <div>Sal</div>
-          <div>Çar</div>
-          <div>Per</div>
-          <div>Cum</div>
-          <div>Cmt</div>
-          <div>Paz</div>
+          <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
         </div>
 
         {loading ? (
@@ -213,9 +187,10 @@ export default function AdminCalendar() {
               const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               const isClosed = closedDays.includes(formattedDate);
 
-              const dayApps = monthAppointments.filter(
-                (app) => app.timeSlot?.slotDate === formattedDate
-              );
+              // O güne ait dolu randevular
+              const dayApps = monthAppointments.filter(app => app.timeSlot?.slotDate === formattedDate);
+              // O güne ait tamamen BOŞ (henüz rezerve edilmemiş) slotlar
+              const emptyDaySlots = monthSlots.filter(slot => slot.slotDate === formattedDate && !slot.booked);
 
               const confirmedCount = dayApps.filter(a => a.status?.toUpperCase() === 'CONFIRMED').length;
               const completedCount = dayApps.filter(a => a.status?.toUpperCase() === 'COMPLETED').length;
@@ -233,7 +208,6 @@ export default function AdminCalendar() {
                     <span className={`font-black text-lg ${isClosed ? 'text-gray-400 line-through' : 'text-[#1A1A1A]'}`}>
                       {dayNum}
                     </span>
-
                     {isClosed && (
                       <span className="text-[10px] font-black bg-[#1A1A1A] text-white px-1.5 py-0.5 uppercase tracking-wider">
                         KAPALI
@@ -242,28 +216,33 @@ export default function AdminCalendar() {
                   </div>
 
                   {!isClosed && (
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 flex flex-col items-start gap-1">
+                      
+                      {/* RANDEVU BİLGİSİ (Siyah Kutu) */}
                       {dayApps.length > 0 && (
                         <div className="text-[11px] font-bold bg-[#1A1A1A] text-white px-1.5 py-0.5 inline-block">
                           [ {dayApps.length} Randevu ]
                         </div>
                       )}
 
+                      {/* YENİ: BOŞ SLOT BİLGİSİ (Kesik Çizgili Kutu) */}
+                      {emptyDaySlots.length > 0 && (
+                        <div className="text-[11px] font-bold border border-dashed border-[#1A1A1A] text-[#1A1A1A] px-1.5 py-0.5 inline-block">
+                          [ {emptyDaySlots.length} Boş Slot ]
+                        </div>
+                      )}
+
+                      {/* NOKTALAR (Durum Bildirimi) */}
                       <div className="flex items-center gap-1.5 pt-1">
-                        {confirmedCount > 0 && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-blue-600" title={`${confirmedCount} Bekleyen`} />
-                        )}
-                        {completedCount > 0 && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-green-600" title={`${completedCount} Tamamlanan`} />
-                        )}
-                        {cancelledCount > 0 && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-red-600" title={`${cancelledCount} İptal`} />
-                        )}
+                        {confirmedCount > 0 && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" title={`${confirmedCount} Bekleyen`} />}
+                        {completedCount > 0 && <span className="w-2.5 h-2.5 rounded-full bg-green-600" title={`${completedCount} Tamamlanan`} />}
+                        {cancelledCount > 0 && <span className="w-2.5 h-2.5 rounded-full bg-red-600" title={`${cancelledCount} İptal`} />}
                       </div>
+                      
                     </div>
                   )}
 
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right mt-2">
                     Detay →
                   </div>
                 </div>
@@ -273,7 +252,6 @@ export default function AdminCalendar() {
         )}
       </div>
 
-      {/* SAĞDAN AÇILAN DETAY ÇEKMECESİ */}
       {isDrawerOpen && selectedDateStr && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg h-full p-8 shadow-2xl overflow-y-auto border-l-4 border-[#1A1A1A] flex flex-col justify-between">
@@ -287,61 +265,32 @@ export default function AdminCalendar() {
                     GÜNLÜK DETAY VE SLOT YÖNETİMİ
                   </p>
                 </div>
+                <button onClick={() => setIsDrawerOpen(false)} className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-black hover:text-white transition-colors cursor-pointer">✕</button>
+              </div>
 
-                <button 
-                  onClick={() => setIsDrawerOpen(false)}
-                  className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-black hover:text-white transition-colors flex items-center justify-center cursor-pointer"
-                >
-                  ✕
+              <div className="mb-6">
+                <button onClick={handleNavigateToDashboard} className="w-full bg-blue-600 text-white py-3 font-black uppercase tracking-wider hover:bg-blue-700 transition-colors cursor-pointer">
+                  Bu Günün Çizelgesine (Ana Sayfaya) Git →
                 </button>
               </div>
 
               <div className="mb-6">
-                <button
-                  onClick={() => toggleCloseDay(selectedDateStr)}
-                  className={`w-full py-3 font-bold uppercase tracking-wider border-2 transition-colors cursor-pointer ${
-                    closedDays.includes(selectedDateStr)
-                      ? 'border-green-600 text-green-600 hover:bg-green-600 hover:text-white'
-                      : 'border-red-600 text-red-600 hover:bg-red-600 hover:text-white'
-                  }`}
-                >
+                <button onClick={() => toggleCloseDay(selectedDateStr)} className={`w-full py-3 font-bold uppercase tracking-wider border-2 transition-colors cursor-pointer ${closedDays.includes(selectedDateStr) ? 'border-green-600 text-green-600 hover:bg-green-600 hover:text-white' : 'border-red-600 text-red-600 hover:bg-red-600 hover:text-white'}`}>
                   {closedDays.includes(selectedDateStr) ? 'Günü Tekrar Aç' : 'Günü Kapat (İzinli / Tatil)'}
                 </button>
               </div>
 
               <div className="bg-[#F5F4EF] p-4 border border-gray-200 mb-6">
-                <h4 className="font-black text-sm uppercase tracking-wider mb-3 text-[#1A1A1A]">
-                  Bu Güne Slot Ekle
-                </h4>
+                <h4 className="font-black text-sm uppercase tracking-wider mb-3 text-[#1A1A1A]">Bu Güne Slot Ekle</h4>
                 <form onSubmit={handleQuickSlotSubmit} className="flex gap-2">
-                  <input 
-                    type="time" 
-                    value={quickStart}
-                    onChange={(e) => setQuickStart(e.target.value)}
-                    className="border border-gray-300 p-2 text-sm bg-white font-medium flex-1 text-gray-800"
-                    required
-                  />
-                  <input 
-                    type="time" 
-                    value={quickEnd}
-                    onChange={(e) => setQuickEnd(e.target.value)}
-                    className="border border-gray-300 p-2 text-sm bg-white font-medium flex-1 text-gray-800"
-                    required
-                  />
-                  <button 
-                    type="submit"
-                    className="bg-[#1A1A1A] text-white px-4 text-xs font-bold uppercase hover:bg-black cursor-pointer"
-                  >
-                    Ekle
-                  </button>
+                  <input type="time" value={quickStart} onChange={(e) => setQuickStart(e.target.value)} className="border border-gray-300 p-2 text-sm bg-white font-medium flex-1 text-gray-800" required />
+                  <input type="time" value={quickEnd} onChange={(e) => setQuickEnd(e.target.value)} className="border border-gray-300 p-2 text-sm bg-white font-medium flex-1 text-gray-800" required />
+                  <button type="submit" className="bg-[#1A1A1A] text-white px-4 text-xs font-bold uppercase hover:bg-black cursor-pointer">Ekle</button>
                 </form>
               </div>
 
               <div className="space-y-3">
-                <h4 className="font-black text-sm uppercase tracking-wider text-[#1A1A1A]">
-                  O Günün Çizelgesi
-                </h4>
-
+                <h4 className="font-black text-sm uppercase tracking-wider text-[#1A1A1A]">O Günün Çizelgesi</h4>
                 {selectedDayAppointments.length === 0 && selectedDaySlots.length === 0 ? (
                   <p className="text-gray-400 font-medium text-sm py-4">Bu gün için herhangi bir slot veya randevu bulunmuyor.</p>
                 ) : (
@@ -355,7 +304,6 @@ export default function AdminCalendar() {
                         <span className="text-xs font-black uppercase text-blue-600">{app.status}</span>
                       </div>
                     ))}
-
                     {selectedDaySlots.map((slot) => (
                       <div key={slot.id} className="bg-gray-50 p-3 border border-dashed border-gray-300 flex justify-between items-center">
                         <span className="text-xs font-bold text-gray-400">Boş Slot • {slot.startTime.slice(0, 5)} - {slot.endTime.slice(0, 5)}</span>
@@ -365,13 +313,7 @@ export default function AdminCalendar() {
                 )}
               </div>
             </div>
-
-            <button 
-              onClick={() => setIsDrawerOpen(false)}
-              className="w-full bg-[#1A1A1A] text-white py-3 font-bold uppercase tracking-widest hover:bg-black mt-8 cursor-pointer"
-            >
-              Kapat
-            </button>
+            <button onClick={() => setIsDrawerOpen(false)} className="w-full bg-[#1A1A1A] text-white py-3 font-bold uppercase tracking-widest hover:bg-black mt-8 cursor-pointer">Kapat</button>
           </div>
         </div>
       )}

@@ -8,17 +8,11 @@ import {
   bookAppointment,
   deleteSlot,
   createSingleSlot,
-  type Appointment 
+  type Appointment // <-- APPOINTMENT BURADA KALMALI
 } from '../../services/api';
 
-interface TimeSlot {
-  id: number;
-  slotDate: string;
-  startTime: string;
-  endTime: string;
-  booked: boolean;
-  active: boolean;
-}
+// Sadece merkezi types klasöründen TimeSlot'u çekiyoruz
+import type { TimeSlot } from '../../types';
 
 type TimelineItem = 
   | { kind: 'APPOINTMENT'; startTime: string; data: Appointment }

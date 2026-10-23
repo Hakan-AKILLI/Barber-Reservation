@@ -138,3 +138,8 @@ export const deleteSlot = async (slotId: number, shopId: number) => {
     params: { shopId },
   });
 };
+// 4.Randevu İptal (DELETE /api/v1/appointments/cancel/{cancellationCode})
+export const cancelAppointment = async (cancellationCode: string) => {
+  const response = await api.delete(`/appointments/cancel/${cancellationCode}`);
+  return response.data;
+};

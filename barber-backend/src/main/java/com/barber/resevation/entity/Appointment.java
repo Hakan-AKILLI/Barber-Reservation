@@ -42,8 +42,8 @@ public class Appointment {
     @Column(nullable = false)
     private String serviceType; // Örn: "SAÇ", "SAKAL", "SAÇ + SAKAL"
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "time_slot_id", nullable = false, unique = true) // Bir slot sadece tek randevuya atanabilir!
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "time_slot_id", nullable = false)
     private TimeSlot timeSlot;
 
     @Column(nullable = false)
