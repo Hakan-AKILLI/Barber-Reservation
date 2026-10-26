@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { getShopBySlug } from '../../services/api';
+import { getShopBySlug, updateShopDetails, updateShopStatus, updateAdminSecurity } from '../../services/api';
 
 export default function AdminSettings() {
   const { slug } = useParams<{ slug: string }>();
   const [shopId, setShopId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Özel Ortalanmış Modal (Bildirim) State'i
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Form State'leri (Dükkan Bilgileri)
   const [name, setName] = useState('');
@@ -13,10 +16,19 @@ export default function AdminSettings() {
   const [address, setAddress] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  // Güvenlik State'leri (Admins Tablosu ile Uyumlu)
+  // Güvenlik State'leri
   const [username, setUsername] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+
+  // Modal Gösterme ve Kapatma Fonksiyonları
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+  };
+
+  const closeNotification = () => {
+    setNotification(null);
+  };
 
   useEffect(() => {
     const fetchShopDetails = async () => {
@@ -28,9 +40,6 @@ export default function AdminSettings() {
         setPhone(shopData.phone);
         setAddress(shopData.address);
         setIsActive(shopData.active);
-        
-        // TODO: Eğer backend getShopBySlug ile admin bilgilerini de dönüyorsa buraya ekle
-        // Şimdilik varsayılan DB verisi olan "admin"i manuel atıyoruz
         setUsername('admin'); 
       } catch (error) {
         console.error('Dükkan bilgileri çekilemedi:', error);
@@ -43,32 +52,67 @@ export default function AdminSettings() {
 
   const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
-    // shopId değişkeni okunduğu için linter (kullanılmayan değişken) hatası vermez
-    console.log("Güncellenecek Dükkan ID:", shopId); 
-    // TODO: Backend'e update isteği atılacak (örn: updateShop(shopId, { name, phone, address }))
-    alert('Dükkan bilgileri güncellendi!');
+    if (!shopId) return;
+    
+    try {
+      await updateShopDetails(shopId, { name, phone, address });
+      showNotification('Dükkan bilgileri başarıyla güncellendi.', 'success');
+    } catch (error) {
+      console.error(error);
+      showNotification('Bilgiler güncellenirken bir hata oluştu.', 'error');
+    }
   };
 
   const handleToggleActive = async () => {
+    if (!shopId) return;
     const newState = !isActive;
-    setIsActive(newState);
-    // TODO: Backend'e aktiflik durumu update isteği atılacak
-    alert(`Dükkan artık randevulara ${newState ? 'AÇIK' : 'KAPALI'}.`);
+    
+    try {
+      await updateShopStatus(shopId, newState);
+      setIsActive(newState);
+      showNotification(`Dükkan artık randevulara ${newState ? 'AÇIK' : 'KAPALI'} duruma getirildi.`, 'success');
+    } catch (error) {
+      console.error(error);
+      showNotification('Durum güncellenirken bir hata oluştu.', 'error');
+    }
   };
 
   const handleSecurityUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Backend'e şifre/kullanıcı adı değiştirme isteği atılacak
-    console.log("Güvenlik Güncellemesi:", { shopId, username, currentPassword, newPassword });
-    alert('Güvenlik bilgileri başarıyla güncellendi!');
-    setCurrentPassword('');
-    setNewPassword('');
+    const adminId = 1; 
+    
+    try {
+      await updateAdminSecurity(adminId, { username, currentPassword, newPassword });
+      showNotification('Güvenlik bilgileri başarıyla güncellendi.', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+} catch (error) {
+      console.error(error);
+      
+      // 'any' yerine tam olarak beklediğimiz veri tipini tanımlıyoruz
+      const err = error as { 
+        response?: { 
+          data?: string | { message?: string } 
+        } 
+      };
+      
+      let errorMessage = 'Güvenlik bilgileri güncellenemedi. Lütfen tekrar deneyin.';
+      
+      if (err.response?.data) {
+        if (typeof err.response.data === 'string') {
+          errorMessage = err.response.data;
+        } else if (typeof err.response.data === 'object' && err.response.data !== null && 'message' in err.response.data) {
+          errorMessage = err.response.data.message || errorMessage;
+        }
+      }
+      
+      showNotification(errorMessage, 'error');
+    }
   };
-
   if (loading) return <div className="animate-pulse font-bold text-gray-500 p-8">Ayarlar yükleniyor...</div>;
 
   return (
-    <div className="max-w-5xl mx-auto relative">
+    <div className="max-w-5xl mx-auto relative min-h-screen">
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase text-[#1A1A1A]">
           AYARLAR
@@ -142,7 +186,6 @@ export default function AdminSettings() {
             <p className="text-sm text-gray-500 font-medium mb-6">Yönetici giriş bilgilerinizi buradan güncelleyebilirsiniz.</p>
             
             <form onSubmit={handleSecurityUpdate} className="space-y-4">
-              {/* DB'deki username alanını yönetmek için eklendi */}
               <div>
                 <label className="block text-sm font-bold mb-1 uppercase tracking-wider text-[#1A1A1A]">Kullanıcı Adı</label>
                 <input 
@@ -172,6 +215,31 @@ export default function AdminSettings() {
         </div>
 
       </div>
+
+      {/* ORTALANMIŞ BRUTALIST MODAL BİLDİRİMİ */}
+      {notification && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-[#F5F4EF] w-full max-w-md p-8 shadow-2xl relative">
+            
+            <h3 className={`text-2xl font-black uppercase tracking-tighter mb-2 ${notification.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {notification.type === 'success' ? 'İŞLEM BAŞARILI' : 'BİR HATA OLUŞTU'}
+            </h3>
+            
+            <p className="text-sm font-medium text-gray-600 mb-8">
+              {notification.message}
+            </p>
+            
+            <button 
+              onClick={closeNotification} 
+              className="w-full bg-[#1A1A1A] text-white py-4 font-bold uppercase tracking-widest hover:bg-black transition-colors cursor-pointer"
+            >
+              Tamam
+            </button>
+            
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

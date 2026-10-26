@@ -143,3 +143,35 @@ export const cancelAppointment = async (cancellationCode: string) => {
   const response = await api.delete(`/appointments/cancel/${cancellationCode}`);
   return response.data;
 };
+// --- AYARLAR VE GÜNCELLEME İÇİN YENİ TİPLER ---
+export interface ShopUpdateRequest {
+  name: string;
+  phone: string;
+  address: string;
+}
+
+export interface AdminSecurityUpdateRequest {
+  username: string;
+  currentPassword: string;
+  newPassword: string;
+}
+
+// --- YENİ API FONKSİYONLARI ---
+
+// 1. Dükkan Bilgilerini Güncelleme
+export const updateShopDetails = async (shopId: number, data: ShopUpdateRequest) => {
+  const response = await api.put(`/shops/${shopId}`, data);
+  return response.data;
+};
+
+// 2. Dükkanı Açma / Kapatma (Status)
+export const updateShopStatus = async (shopId: number, active: boolean) => {
+  const response = await api.patch(`/shops/${shopId}/status`, { active });
+  return response.data;
+};
+
+// 3. Yönetici Güvenlik Bilgilerini Güncelleme
+export const updateAdminSecurity = async (adminId: number, data: AdminSecurityUpdateRequest) => {
+  const response = await api.put(`/admins/${adminId}/security`, data);
+  return response.data;
+};

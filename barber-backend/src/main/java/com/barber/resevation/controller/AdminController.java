@@ -15,11 +15,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
+import com.barber.resevation.dto.AdminSecurityUpdateRequest;
+import com.barber.resevation.service.AdminService;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -33,6 +35,7 @@ public class AdminController {
 
     private final AppointmentService appointmentService;
     private final TimeSlotService timeSlotService;
+    private final AdminService adminService;
 
     /* --- RANDEVU YÖNETİMİ --- */
 
@@ -79,5 +82,14 @@ public class AdminController {
             @RequestParam Long shopId) {
         timeSlotService.deleteSlot(id, shopId);
         return ResponseEntity.noContent().build();
+    }
+    @PutMapping("/{adminId}/security")
+    public ResponseEntity<?> updateSecurity(@PathVariable Long adminId, @RequestBody AdminSecurityUpdateRequest request) {
+        try {
+            adminService.updateSecurityInfo(adminId,request);
+            return ResponseEntity.ok("Güvenlik bilgileri başarıyla güncellendi.");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

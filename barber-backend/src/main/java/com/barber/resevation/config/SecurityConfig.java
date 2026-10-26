@@ -46,18 +46,25 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // CORS ayarını doğrudan buradaki CorsConfigurationSource metodumuza bağlıyoruz
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // /api/v1/shops/** ve slug isteklerini buraya ekledik:
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/slots/available", "/api/v1/appointments/**", "/api/v1/shops/**")
-                        .permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
-                        .permitAll()
-                        .requestMatchers("/api/v1/admin/**")
-                        .authenticated()
+                        // 1. Auth ve Randevu alma işlemleri herkese açık
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/slots/available", "/api/v1/appointments/**").permitAll()
+
+                        // 2. Swagger herkese açık
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+
+                        // 3. Dükkan verisini OKUMA (GET) herkese açık (Müşteriler dükkan adını görebilsin diye)
+                        // import org.springframework.http.HttpMethod; eklemeyi unutma!
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/shops/**").permitAll()
+
+                        // 4. Admins endpoint'leri (s takısı eklendi) ve Shops endpoint'lerine VERİ YAZMA (PUT, PATCH) korumaya alındı
+                        .requestMatchers("/api/v1/admins/**", "/api/v1/shops/**").authenticated()
+
+                        // 5. Geriye kalan her şey güvenlik ağı olarak korumaya alınır
+                        .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
