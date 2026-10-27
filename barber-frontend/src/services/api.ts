@@ -172,6 +172,6 @@ export const updateShopStatus = async (shopId: number, active: boolean) => {
 
 // 3. Yönetici Güvenlik Bilgilerini Güncelleme
 export const updateAdminSecurity = async (adminId: number, data: AdminSecurityUpdateRequest) => {
-  const response = await api.put(`/admins/${adminId}/security`, data);
+  const response = await api.put(`/admin/${adminId}/security`, data);
   return response.data;
 };

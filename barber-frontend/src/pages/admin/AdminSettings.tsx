@@ -88,8 +88,6 @@ export default function AdminSettings() {
       setNewPassword('');
 } catch (error) {
       console.error(error);
-      
-      // 'any' yerine tam olarak beklediğimiz veri tipini tanımlıyoruz
       const err = error as { 
         response?: { 
           data?: string | { message?: string } 

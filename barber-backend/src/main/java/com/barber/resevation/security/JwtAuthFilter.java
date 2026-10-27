@@ -48,9 +48,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception e) {
-            // Token süresi geçmiş veya bozuk
+            logger.warn("JWT doğrulama hatası: " + e.getMessage());
         }
-
         filterChain.doFilter(request, response);
     }
 }

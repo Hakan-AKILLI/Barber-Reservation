@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,10 +33,15 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
-                .message("Sunucu tarafında beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
+                .message(ex.getClass().getName() + ": " + ex.getMessage())
                 .path(request.getRequestURI())
                 .build();
 
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+    }
+
 }
