@@ -21,15 +21,24 @@ public class TimeSlotService {
     private final TimeSlotRepository timeSlotRepository;
     private final ShopRepository shopRepository;
 
-    // Müşterinin göreceği boş ve aktif slotlar
     @Transactional(readOnly = true)
     public List<TimeSlot> getAvailableSlots(Long shopId, LocalDate date) {
+        // 1. Önce dükkanın durumunu kontrol et
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new RuntimeException("Dükkan bulunamadı!"));
+
+        // 2. Eğer dükkan kapalıysa (isActive = false) müşteriye HİÇ slot döndürme
+        if (!shop.isActive()) {
+            return java.util.Collections.emptyList();
+        }
+
+        // 3. Dükkan açıksa mevcut sorguyla boş slotları getir
         return timeSlotRepository.findByShopIdAndSlotDateAndActiveTrueAndBookedFalseOrderByStartTimeAsc(shopId, date);
     }
 
     // Berberin tekil slot açması
     @Transactional
-    public TimeSlot createSlot(Long shopId, CreateTimeSlotRequest request) { // shopId eklendi
+    public TimeSlot createSlot(Long shopId, CreateTimeSlotRequest request) {
 
         // 1. Önce slotun ekleneceği dükkanı buluyoruz
         Shop shop = shopRepository.findById(shopId)
@@ -37,7 +46,7 @@ public class TimeSlotService {
 
         // 2. Slotu oluştururken dükkanı da içine ekliyoruz
         TimeSlot slot = TimeSlot.builder()
-                .shop(shop) // <-- KRİTİK NOKTA: Dükkanı slota bağladık!
+                .shop(shop)
                 .slotDate(request.getSlotDate())
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
@@ -62,7 +71,7 @@ public class TimeSlotService {
         // Slotları üretme döngüsü
         while (currentTime.isBefore(end)) {
             TimeSlot slot = new TimeSlot();
-            slot.setShop(shop); // KRİTİK NOKTA: Slota dükkanı atıyoruz!
+            slot.setShop(shop);
             slot.setSlotDate(date);
             slot.setStartTime(currentTime);
             slot.setEndTime(currentTime.plusMinutes(duration));
@@ -75,6 +84,7 @@ public class TimeSlotService {
 
         return timeSlotRepository.saveAll(slots);
     }
+
     // Berberin boş slot silmesi
     @Transactional
     public void deleteSlot(Long slotId, Long shopId) {
@@ -94,5 +104,14 @@ public class TimeSlotService {
 
         // 4. Slotu veritabanından siliyoruz
         timeSlotRepository.delete(slot);
+    }
+
+    // Günü kapatmak için o günkü randevusuz (boş) slotları silen metot
+    @Transactional
+    public void deleteEmptySlotsByDate(Long shopId, LocalDate date) {
+        // Java tarafında listeyi çekip "for" döngüsüyle dönmek yerine,
+        // işlemi doğrudan veritabanına devrederek tek satırda çözüyoruz.
+        int deletedCount = timeSlotRepository.deleteUnbookedSlotsByShopAndDate(shopId, date);
+        System.out.println(date + " tarihi için " + deletedCount + " adet boş slot silindi ve gün kapatıldı.");
     }
 }

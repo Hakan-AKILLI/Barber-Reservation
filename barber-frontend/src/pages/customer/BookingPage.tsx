@@ -18,7 +18,7 @@ export default function BookingPage() {
     d.setDate(d.getDate() + i);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     
-   let label: string;
+    let label: string;
     
     if (i === 0) {
       label = 'Bugün';
@@ -56,12 +56,12 @@ export default function BookingPage() {
 
   useEffect(() => {
     const fetchSlots = async () => {
-      if (!shop) return; 
+      if (!shop || !shop.active) return; // Dükkan kapalıysa boşuna istek atma
       setLoading(true);
       try {
         const data = await getAvailableSlots(shop.id, selectedDate);
         setSlots(data);
-      } catch  {
+      } catch {
         setSlots([]); 
       } finally {
         setLoading(false);
@@ -70,9 +70,43 @@ export default function BookingPage() {
     fetchSlots();
   }, [selectedDate, refreshKey, shop]);
 
+  // --- YÜKLEME VE HATA DURUMLARI ---
   if (shopError) return <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center"><h1 className="text-3xl font-black uppercase text-red-600">DÜKKAN BULUNAMADI</h1></div>;
   if (!shop) return <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center"><h1 className="text-2xl font-bold uppercase animate-pulse">DÜKKAN YÜKLENİYOR...</h1></div>;
 
+  // --- YENİ: DÜKKAN KAPALIYSA GÖSTERİLECEK EKRAN ---
+  if (!shop.active) {
+    return (
+      <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
+        <header className="flex justify-between items-center px-8 py-5 border-b border-gray-300">
+          <h1 className="text-3xl font-black tracking-widest uppercase">{shop.name}</h1>
+          <div className="flex gap-4">
+            <button onClick={() => setIsCancelModalOpen(true)} className="px-6 py-2 border border-gray-900 text-gray-900 font-bold hover:bg-gray-100 transition cursor-pointer">Randevu İptal</button>
+            <button onClick={() => setIsLoginOpen(true)} className="px-6 py-2 bg-[#1A1A1A] text-white font-bold hover:bg-black transition cursor-pointer">Berber Girişi</button>
+          </div>
+        </header>
+
+        <main className="flex flex-1 items-center justify-center p-8">
+          <div className="max-w-2xl w-full p-12 text-center bg-white border-4 border-[#1A1A1A] shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] relative">
+            <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-2 font-black tracking-widest uppercase text-sm border-2 border-[#1A1A1A]">
+              BİLGİLENDİRME
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-6 text-[#1A1A1A] mt-6">
+              DÜKKAN ŞU AN KAPALI
+            </h2>
+            <p className="text-gray-600 text-lg font-bold">
+              İşletmemiz geçici olarak online randevu alımına kapalıdır. Lütfen daha sonra tekrar deneyiniz.
+            </p>
+          </div>
+        </main>
+
+        <AdminLoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} slug={slug || ''} />
+        <CancelAppointmentModal isOpen={isCancelModalOpen} onClose={() => setIsCancelModalOpen(false)} />
+      </div>
+    );
+  }
+
+  // --- DÜKKAN AÇIKSA GÖSTERİLECEK NORMAL RANDEVU EKRANI ---
   return (
     <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
       <header className="flex justify-between items-center px-8 py-5 border-b border-gray-300">

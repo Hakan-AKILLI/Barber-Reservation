@@ -9,19 +9,10 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import com.barber.resevation.dto.AdminSecurityUpdateRequest;
 import com.barber.resevation.service.AdminService;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -48,7 +39,7 @@ public class AdminController {
 
     @PatchMapping("/appointments/{id}/status")
     public ResponseEntity<Appointment> updateAppointmentStatus(
-            @RequestParam Long shopId, // KRİTİK EKLENTİ: Adminin yetkisini doğrulamak için eklendi
+            @RequestParam Long shopId,
             @PathVariable Long id,
             @RequestParam String status) {
         return ResponseEntity.ok(appointmentService.updateStatus(shopId, id, status));
@@ -64,7 +55,7 @@ public class AdminController {
         return ResponseEntity.ok(timeSlotService.createSlot(shopId, request));
     }
 
-    // Berberin toplu slot üretmesi: POST /api/v1/admin/slots/generate
+    // Berberin toplu slot üretmesi: POST /api/v1/admin/generate
     @PostMapping("/generate")
     public ResponseEntity<List<TimeSlot>> generateSlots(
             @RequestParam Long shopId,
@@ -72,9 +63,18 @@ public class AdminController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime start,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime end,
             @RequestParam int duration) {
-
         return ResponseEntity.ok(timeSlotService.generateSlots(shopId, date, start, end, duration));
     }
+
+    // Günü Kapatma (Boş Slotları Silme): DELETE /api/v1/admin/slots/by-date
+    @DeleteMapping("/slots/by-date")
+    public ResponseEntity<?> closeDayByDeletingEmptySlots(
+            @RequestParam Long shopId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        timeSlotService.deleteEmptySlotsByDate(shopId, date);
+        return ResponseEntity.ok("Seçilen tarihteki boş slotlar başarıyla temizlendi.");
+    }
+
     // Berberin boş slot silmesi: DELETE /api/v1/admin/slots/{id}
     @DeleteMapping("/slots/{id}")
     public ResponseEntity<Void> deleteSlot(
@@ -83,10 +83,13 @@ public class AdminController {
         timeSlotService.deleteSlot(id, shopId);
         return ResponseEntity.noContent().build();
     }
+
+    /* --- GÜVENLİK --- */
+
     @PutMapping("/{adminId}/security")
     public ResponseEntity<?> updateSecurity(@PathVariable Long adminId, @RequestBody AdminSecurityUpdateRequest request) {
         try {
-            adminService.updateSecurityInfo(adminId,request);
+            adminService.updateSecurityInfo(adminId, request);
             return ResponseEntity.ok("Güvenlik bilgileri başarıyla güncellendi.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

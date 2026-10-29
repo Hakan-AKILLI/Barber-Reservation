@@ -175,3 +175,10 @@ export const updateAdminSecurity = async (adminId: number, data: AdminSecurityUp
   const response = await api.put(`/admin/${adminId}/security`, data);
   return response.data;
 };
+// Belirli bir tarihteki boş slotları silerek günü kapatma
+export const closeDaySlots = async (shopId: number, date: string) => {
+  const response = await api.delete(`/admin/slots/by-date`, {
+    params: { shopId, date },
+  });
+  return response.data;
+};
