@@ -13,6 +13,7 @@ export default function BookingPage() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [shopError, setShopError] = useState(false);
 
+  // Gün Listesi Oluşturma
   const daysList = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
@@ -28,10 +29,10 @@ export default function BookingPage() {
       const dayName = d.toLocaleDateString('tr-TR', { weekday: 'long' });
       label = dayName.charAt(0).toUpperCase() + dayName.slice(1);
     }
-    return { label, value };
+    return { label, value, isToday: i === 0 }; // YENİ: isToday bayrağı eklendi
   });
 
-  const [selectedDate, setSelectedDate] = useState(daysList[0].value);
+  const [selectedDateObj, setSelectedDateObj] = useState(daysList[0]);
   const [slots, setSlots] = useState<TimeSlot[]>([]); 
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -56,11 +57,29 @@ export default function BookingPage() {
 
   useEffect(() => {
     const fetchSlots = async () => {
-      if (!shop || !shop.active) return; // Dükkan kapalıysa boşuna istek atma
+      if (!shop || !shop.active) return;
       setLoading(true);
       try {
-        const data = await getAvailableSlots(shop.id, selectedDate);
-        setSlots(data);
+        const data = await getAvailableSlots(shop.id, selectedDateObj.value);
+        
+        let filteredSlots = data;
+        
+        // EĞER SEÇİLİ GÜN "BUGÜN" İSE ŞU ANKİ SAATTEN GEÇMİŞ OLANLARI GİZLE
+        if (selectedDateObj.isToday) {
+          const now = new Date();
+          const currentHour = now.getHours();
+          const currentMinute = now.getMinutes();
+
+          filteredSlots = data.filter((slot: TimeSlot) => {
+            const [slotHour, slotMinute] = slot.startTime.split(':').map(Number);
+            // Slot saati şu andan büyükse VEYA saat aynı ama dakika büyükse göster
+            if (slotHour > currentHour) return true;
+            if (slotHour === currentHour && slotMinute >= currentMinute) return true;
+            return false;
+          });
+        }
+        
+        setSlots(filteredSlots);
       } catch {
         setSlots([]); 
       } finally {
@@ -68,21 +87,19 @@ export default function BookingPage() {
       }
     };
     fetchSlots();
-  }, [selectedDate, refreshKey, shop]);
+  }, [selectedDateObj, refreshKey, shop]);
 
-  // --- YÜKLEME VE HATA DURUMLARI ---
   if (shopError) return <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center"><h1 className="text-3xl font-black uppercase text-red-600">DÜKKAN BULUNAMADI</h1></div>;
   if (!shop) return <div className="min-h-screen bg-[#F6F5EFFF] flex items-center justify-center"><h1 className="text-2xl font-bold uppercase animate-pulse">DÜKKAN YÜKLENİYOR...</h1></div>;
 
-  // --- YENİ: DÜKKAN KAPALIYSA GÖSTERİLECEK EKRAN ---
   if (!shop.active) {
     return (
       <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
-        <header className="flex justify-between items-center px-8 py-5 border-b border-gray-300">
-          <h1 className="text-3xl font-black tracking-widest uppercase">{shop.name}</h1>
+        <header className="flex justify-between items-center px-10 py-6 border-b-2 border-[#1A1A1A]">
+          <h1 className="text-3xl md:text-4xl font-black tracking-widest uppercase">{shop.name}</h1>
           <div className="flex gap-4">
-            <button onClick={() => setIsCancelModalOpen(true)} className="px-6 py-2 border border-gray-900 text-gray-900 font-bold hover:bg-gray-100 transition cursor-pointer">Randevu İptal</button>
-            <button onClick={() => setIsLoginOpen(true)} className="px-6 py-2 bg-[#1A1A1A] text-white font-bold hover:bg-black transition cursor-pointer">Berber Girişi</button>
+            <button onClick={() => setIsCancelModalOpen(true)} className="px-6 py-3 border-2 border-[#1A1A1A] font-black uppercase tracking-wider hover:bg-gray-100 transition cursor-pointer">Randevu İptal</button>
+            <button onClick={() => setIsLoginOpen(true)} className="px-6 py-3 bg-[#1A1A1A] text-white font-black uppercase tracking-wider border-2 border-[#1A1A1A] hover:bg-black transition cursor-pointer">Berber Girişi</button>
           </div>
         </header>
 
@@ -99,43 +116,57 @@ export default function BookingPage() {
             </p>
           </div>
         </main>
-
         <AdminLoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} slug={slug || ''} />
         <CancelAppointmentModal isOpen={isCancelModalOpen} onClose={() => setIsCancelModalOpen(false)} />
       </div>
     );
   }
 
-  // --- DÜKKAN AÇIKSA GÖSTERİLECEK NORMAL RANDEVU EKRANI ---
   return (
     <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
-      <header className="flex justify-between items-center px-8 py-5 border-b border-gray-300">
-        <h1 className="text-3xl font-black tracking-widest uppercase">{shop.name}</h1>
+      <header className="flex justify-between items-center px-10 py-6 border-b-2 border-[#1A1A1A] bg-[#F6F5EFFF] z-10">
+        <h1 className="text-3xl md:text-4xl font-black tracking-widest uppercase">{shop.name}</h1>
         <div className="flex gap-4">
-          <button onClick={() => setIsCancelModalOpen(true)} className="px-6 py-2 border border-gray-900 text-gray-900 font-bold hover:bg-gray-100 transition cursor-pointer">Randevu İptal</button>
-          <button onClick={() => setIsLoginOpen(true)} className="px-6 py-2 bg-[#1A1A1A] text-white font-bold hover:bg-black transition cursor-pointer">Berber Girişi</button>
+          <button onClick={() => setIsCancelModalOpen(true)} className="px-6 py-3 border-2 border-[#1A1A1A] font-black uppercase tracking-wider hover:bg-gray-100 transition cursor-pointer">Randevu İptal</button>
+          <button onClick={() => setIsLoginOpen(true)} className="px-6 py-3 bg-[#1A1A1A] text-white font-black uppercase tracking-wider border-2 border-[#1A1A1A] hover:bg-black transition cursor-pointer">Berber Girişi</button>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
-        <div className="flex-1 px-8 py-12 overflow-y-auto">
-          <h2 className="text-6xl font-black tracking-tighter uppercase mb-2">RANDEVUNU SEÇ</h2>
-          <p className="text-gray-600 mb-10 text-lg">Bir gün ve boş saat seç. Giriş gerekmez.</p>
+      <main className="flex flex-1 overflow-hidden h-[calc(100vh-100px)]">
+        <div className="flex-1 px-10 py-16 overflow-y-auto">
+          <h2 className="text-6xl md:text-7xl font-black tracking-tighter uppercase mb-3 text-[#1A1A1A]">RANDEVUNU SEÇ</h2>
+          <p className="text-gray-500 mb-12 text-xl font-medium">Bir gün ve boş saat seç.</p>
 
-          <div className="flex flex-wrap gap-3 mb-10">
+          <div className="flex flex-wrap gap-4 mb-14">
             {daysList.map((day) => (
-              <button key={day.value} onClick={() => setSelectedDate(day.value)} className={`px-6 py-2 border border-gray-900 font-bold cursor-pointer transition-colors ${selectedDate === day.value ? 'bg-[#1A1A1A] text-white' : 'bg-transparent text-gray-900 hover:bg-gray-100'}`}>
+              <button 
+                key={day.value} 
+                onClick={() => setSelectedDateObj(day)} 
+                className={`px-8 py-3 border-2 border-[#1A1A1A] font-black uppercase tracking-wider cursor-pointer transition-colors ${
+                  selectedDateObj.value === day.value 
+                  ? 'bg-[#1A1A1A] text-white' 
+                  : 'bg-transparent text-[#1A1A1A] hover:bg-gray-200'
+                }`}
+              >
                 {day.label}
               </button>
             ))}
           </div>
 
-          <div className="bg-white border border-gray-200 p-8 w-full max-w-4xl shadow-sm">
-            <h3 className="text-xl font-bold uppercase tracking-wide mb-6">BOŞ SAATLER</h3>
-            {loading ? <p className="text-gray-500 font-medium">Saatler yükleniyor...</p> : slots.length === 0 ? <p className="text-red-500 font-medium">Bu tarihte boş saat bulunmuyor.</p> : (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="bg-white border-2 border-[#1A1A1A] p-10 w-full max-w-5xl shadow-[4px_4px_0px_0px_rgba(26,26,26,0.1)]">
+            <h3 className="text-2xl font-black uppercase tracking-widest mb-8 text-[#1A1A1A]">BOŞ SAATLER</h3>
+            {loading ? (
+              <p className="text-gray-500 font-bold text-lg animate-pulse">Saatler yükleniyor...</p>
+            ) : slots.length === 0 ? (
+              <p className="text-gray-500 font-bold text-lg border-2 border-dashed border-gray-300 p-8 text-center">Bu tarihte uygun saat bulunmuyor.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
                 {slots.map((slot) => (
-                  <button key={slot.id} onClick={() => setSelectedSlot(slot)} className="px-4 py-3 border border-gray-900 text-center font-bold hover:bg-[#1A1A1A] hover:text-white cursor-pointer transition-colors">
+                  <button 
+                    key={slot.id} 
+                    onClick={() => setSelectedSlot(slot)} 
+                    className="px-4 py-4 border-2 border-[#1A1A1A] text-center font-black text-lg hover:bg-[#1A1A1A] hover:text-white cursor-pointer transition-colors"
+                  >
                     {slot.startTime.slice(0, 5)}
                   </button>
                 ))}
@@ -143,12 +174,12 @@ export default function BookingPage() {
             )}
           </div>
         </div>
-        <div className="hidden lg:flex w-[35%] bg-[#EBE9E1] border-l border-dashed border-gray-400 items-center justify-center">
-          <span className="text-gray-500 font-medium tracking-widest text-center px-4">[ {shop.name} FOTOĞRAFI ]</span>
+
+        <div className="hidden lg:flex w-[35%] bg-[#EBE9E1] border-l-2 border-dashed border-gray-400 items-center justify-center relative overflow-hidden">
+          <span className="text-gray-400 font-bold tracking-widest text-center px-4">[ {shop.name} FOTOĞRAFI ]</span>
         </div>
       </main>
 
-      {/* Dışarıya Aktardığımız Modallar */}
       <AdminLoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} slug={slug || ''} />
       <CancelAppointmentModal isOpen={isCancelModalOpen} onClose={() => setIsCancelModalOpen(false)} />
       <BookingConfirmModal isOpen={!!selectedSlot} onClose={() => setSelectedSlot(null)} selectedSlot={selectedSlot} onSuccess={() => setRefreshKey(prev => prev + 1)} />
