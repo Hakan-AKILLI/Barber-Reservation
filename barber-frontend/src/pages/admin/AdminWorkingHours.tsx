@@ -19,6 +19,19 @@ export default function WorkingHours() {
   const [multiDuration, setMultiDuration] = useState('45');
   const [isMultiLoading, setIsMultiLoading] = useState(false);
 
+  // Bildirim Modalı State'i (alert yerine)
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
+
   useEffect(() => {
     const fetchShop = async () => {
       if (!slug) return;
@@ -32,6 +45,10 @@ export default function WorkingHours() {
     fetchShop();
   }, [slug]);
 
+  const closeModal = () => {
+    setModalConfig(prev => ({ ...prev, isOpen: false }));
+  };
+
   const handleSingleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopId) return;
@@ -42,11 +59,21 @@ export default function WorkingHours() {
         startTime: `${singleStart}:00`,
         endTime: `${singleEnd}:00`
       });
-      alert('Tekli slot başarıyla oluşturuldu!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'İŞLEM BAŞARILI',
+        message: 'Tekli slot başarıyla oluşturuldu!'
+      });
       setSingleStart('');
       setSingleEnd('');
-    } catch  {
-      alert('Slot oluşturulurken hata oluştu.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'İŞLEM BAŞARISIZ',
+        message: 'Slot oluşturulurken bir hata oluştu.'
+      });
     } finally {
       setIsSingleLoading(false);
     }
@@ -63,11 +90,21 @@ export default function WorkingHours() {
         end: `${multiEnd}:00`,
         duration: Number(multiDuration)
       });
-      alert('Çoklu slotlar başarıyla oluşturuldu!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'İŞLEM BAŞARILI',
+        message: 'Çoklu slotlar başarıyla oluşturuldu!'
+      });
       setMultiStart('');
       setMultiEnd('');
-    } catch  {
-      alert('Çoklu slotlar oluşturulurken hata oluştu.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'İŞLEM BAŞARISIZ',
+        message: 'Çoklu slotlar oluşturulurken bir hata oluştu.'
+      });
     } finally {
       setIsMultiLoading(false);
     }
@@ -180,7 +217,7 @@ export default function WorkingHours() {
               <button 
                 type="submit"
                 disabled={isMultiLoading || !shopId}
-                className="bg-[#1A1A1A] text-white px-8 py-4 font-bold hover:bg-black transition-colors disabled:opacity-50 uppercase tracking-wider cursor-pointer"
+                className="bg-[#1A1A1A] text-[#ffffff] px-8 py-4 font-bold hover:bg-black transition-colors disabled:opacity-50 uppercase tracking-wider cursor-pointer"
               >
                 {isMultiLoading ? 'Oluşturuluyor...' : 'Slotları Oluştur'}
               </button>
@@ -189,6 +226,31 @@ export default function WorkingHours() {
         </div>
 
       </div>
+
+      {/* ÖZEL BİLDİRİM MODALI (ALERT YERİNE) */}
+      {modalConfig.isOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] relative">
+            <div className={`inline-block px-3 py-1 text-xs font-black uppercase tracking-widest text-white mb-4 ${
+              modalConfig.type === 'success' ? 'bg-[#1A1A1A]' : 'bg-red-600'
+            }`}>
+              {modalConfig.type === 'success' ? 'BAŞARILI' : 'HATA'}
+            </div>
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-[#1A1A1A] mb-2">
+              {modalConfig.title}
+            </h3>
+            <p className="text-gray-700 font-bold text-sm mb-6">
+              {modalConfig.message}
+            </p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-[#1A1A1A] text-white py-3 font-black uppercase tracking-widest border-2 border-[#1A1A1A] hover:bg-black transition-colors cursor-pointer"
+            >
+              TAMAM
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -47,7 +47,7 @@ export default function AdminLoginModal({ isOpen, onClose, slug }: Props) {
           <div>
             <label className="block text-sm font-bold mb-1">Kullanıcı Adı</label>
             <input 
-              type="text" placeholder="admin" value={adminUsername}
+              type="text" placeholder="Username" value={adminUsername}
               onChange={(e) => { setAdminUsername(e.target.value); setLoginError(false); }}
               className={`w-full border p-3 outline-none transition-colors bg-white ${loginError ? 'border-red-600 border-2' : 'border-gray-300 focus:border-[#1A1A1A]'}`}
             />

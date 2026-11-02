@@ -10,7 +10,6 @@ type Step = 'form' | 'confirm';
 
 export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
   const [step, setStep] = useState<Step>('form');
-  const [cancelPhone, setCancelPhone] = useState('');
   const [cancelCode, setCancelCode] = useState('');
   const [isCanceling, setIsCanceling] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -20,11 +19,12 @@ export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
   // 1. Adım: Form gönderildiğinde onay ekranına geç
   const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cancelPhone || !cancelCode) {
-      alert('Lütfen telefon numaranızı ve iptal kodunuzu girin.');
+    if (!cancelCode.trim()) {
+      setMessage({ type: 'error', text: 'Lütfen iptal kodunuzu girin.' });
       return;
     }
     setStep('confirm');
+    setMessage(null);
   };
 
   // 2. Adım: Kullanıcı "Evet" derse API'ye istek at
@@ -36,7 +36,6 @@ export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
       await cancelAppointment(cancelCode);
       
       setMessage({ type: 'success', text: 'Randevunuz başarıyla iptal edildi.' });
-      setCancelPhone('');
       setCancelCode('');
       setStep('form'); // Başarılı mesajını göstermek için ana forma dön
       
@@ -56,7 +55,6 @@ export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
 
   const handleClose = () => {
     setStep('form');
-    setCancelPhone('');
     setCancelCode('');
     setMessage(null);
     onClose();
@@ -80,7 +78,7 @@ export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
               RANDEVU İPTAL ET
             </h3>
             <p className="text-gray-600 text-sm mb-6 font-medium">
-              Lütfen kayıtlı telefon numaranızı ve randevu oluştururken verilen iptal kodunu giriniz.
+              Lütfen randevu oluştururken verilen iptal kodunu giriniz.
             </p>
 
             {/* Başarı veya Hata Mesajı Alanı */}
@@ -94,26 +92,16 @@ export default function CancelAppointmentModal({ isOpen, onClose }: Props) {
 
             <form onSubmit={handleInitialSubmit} className="space-y-5">
               <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A] uppercase tracking-wider">Telefon</label>
-                <input 
-                  type="tel" 
-                  placeholder="05XX XXX XX XX" 
-                  value={cancelPhone}
-                  onChange={(e) => setCancelPhone(e.target.value)}
-                  className="w-full border-2 border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800" 
-                  required
-                />
-              </div>
-
-              <div>
                 <label className="block text-sm font-bold mb-1 text-[#1A1A1A] uppercase tracking-wider">İptal Kodu</label>
                 <input 
                   type="text" 
                   placeholder="Kodunuz" 
                   value={cancelCode}
-                  onChange={(e) => setCancelCode(e.target.value)}
-                  className="w-full border-2 border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-bold text-gray-800 tracking-widest uppercase" 
-                  required
+                  onChange={(e) => {
+                    setCancelCode(e.target.value);
+                    setMessage(null); // Kullanıcı yazmaya başladığında hatayı gizle
+                  }}
+                  className="w-full border-2 border-[#1A1A1A] p-3 outline-none focus:bg-gray-100 transition-colors bg-white font-bold text-gray-800 tracking-widest uppercase" 
                 />
               </div>
 

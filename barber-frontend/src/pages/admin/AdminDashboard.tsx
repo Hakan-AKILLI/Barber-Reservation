@@ -8,10 +8,9 @@ import {
   bookAppointment,
   deleteSlot,
   createSingleSlot,
-  type Appointment // <-- APPOINTMENT BURADA KALMALI
+  type Appointment
 } from '../../services/api';
 
-// Sadece merkezi types klasöründen TimeSlot'u çekiyoruz
 import type { TimeSlot } from '../../types';
 
 type TimelineItem = 
@@ -29,7 +28,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshCount, setRefreshCount] = useState(0);
 
-  // Tarih State'i (Eğer URL'de date varsa onu al, yoksa bugünün tarihini ayarla)
+  // Tarih State'i
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     if (dateParam) return dateParam;
     const today = new Date();
@@ -52,11 +51,25 @@ export default function AdminDashboard() {
   const [quickEnd, setQuickEnd] = useState('');
   const [isQuickSlotLoading, setIsQuickSlotLoading] = useState(false);
 
+  // YENİ: Bildirim ve Onay Modalı State'leri
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
+
+  const [slotToDeleteId, setSlotToDeleteId] = useState<number | null>(null);
+
   const triggerRefresh = () => {
     setRefreshCount((prev) => prev + 1);
   };
 
-  // Tarih İlerleme / Gerileme Fonksiyonları
   const handlePrevDay = () => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() - 1);
@@ -122,7 +135,7 @@ export default function AdminDashboard() {
     };
   }, [shopId, selectedDate, refreshCount]);
 
-  // Statü Güncelleme (PATCH)
+  // Statü Güncelleme
   const handleStatusChange = async (appointmentId: number, newStatus: string) => {
     if (!shopId) return;
     try {
@@ -135,7 +148,12 @@ export default function AdminDashboard() {
       );
     } catch (error) {
       console.error('Durum güncellenemedi:', error);
-      alert('Randevu durumu güncellenirken bir hata oluştu.');
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'HATA',
+        message: 'Randevu durumu güncellenirken bir hata oluştu.'
+      });
     }
   };
 
@@ -143,8 +161,13 @@ export default function AdminDashboard() {
   const handleCreateManualBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSlotForBooking) return;
-    if (!manualName || !manualPhone || !manualService) {
-      alert('Lütfen tüm alanları doldurun.');
+    if (!manualName.trim() || !manualPhone.trim() || !manualService.trim()) {
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'EKSİK BİLGİ',
+        message: 'Lütfen ad, telefon ve hizmet alanlarını doldurun.'
+      });
       return;
     }
 
@@ -152,9 +175,9 @@ export default function AdminDashboard() {
     try {
       await bookAppointment({
         timeSlotId: selectedSlotForBooking.id,
-        customerName: manualName,
-        customerPhone: manualPhone,
-        serviceType: manualService,
+        customerName: manualName.trim(),
+        customerPhone: manualPhone.trim(),
+        serviceType: manualService.trim(),
       });
 
       setSelectedSlotForBooking(null);
@@ -165,7 +188,12 @@ export default function AdminDashboard() {
       triggerRefresh();
     } catch (error) {
       console.error('Manuel randevu oluşturulurken hata:', error);
-      alert('Randevu oluşturulamadı. Lütfen tekrar deneyin.');
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'HATA',
+        message: 'Randevu oluşturulamadı. Lütfen tekrar deneyin.'
+      });
     } finally {
       setIsManualBooking(false);
     }
@@ -176,14 +204,19 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!shopId) return;
     if (!quickStart || !quickEnd) {
-      alert('Lütfen başlangıç ve bitiş saatlerini seçin.');
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'EKSİK BİLGİ',
+        message: 'Lütfen başlangıç ve bitiş saatlerini seçin.'
+      });
       return;
     }
 
     setIsQuickSlotLoading(true);
     try {
       await createSingleSlot(shopId, {
-        slotDate: selectedDate, // Seçili tarihe oluşturulacak
+        slotDate: selectedDate,
         startTime: `${quickStart}:00`,
         endTime: `${quickEnd}:00`
       });
@@ -194,23 +227,38 @@ export default function AdminDashboard() {
       triggerRefresh();
     } catch (error) {
       console.error('Slot oluşturulurken hata:', error);
-      alert('Slot oluşturulamadı.');
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'HATA',
+        message: 'Slot oluşturulamadı.'
+      });
     } finally {
       setIsQuickSlotLoading(false);
     }
   };
 
-  // Boş Slot Silme İşlemi
-  const handleDeleteSlot = async (slotId: number) => {
-    if (!shopId) return;
-    if (!window.confirm('Bu boş slotu silmek istediğinize emin misiniz?')) return;
+  // Boş Slot Silme Onayını Başlatma
+  const handleDeleteSlotClick = (slotId: number) => {
+    setSlotToDeleteId(slotId);
+  };
+
+  // Boş Slotu Gerçekten Silme
+  const executeDeleteSlot = async () => {
+    if (!shopId || !slotToDeleteId) return;
 
     try {
-      await deleteSlot(slotId, shopId);
+      await deleteSlot(slotToDeleteId, shopId);
+      setSlotToDeleteId(null);
       triggerRefresh();
     } catch (error) {
       console.error('Slot silinemedi:', error);
-      alert('Slot silinirken bir hata oluştu.');
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'HATA',
+        message: 'Slot silinirken bir hata oluştu.'
+      });
     }
   };
 
@@ -220,7 +268,7 @@ export default function AdminDashboard() {
     (a) => a.status?.toUpperCase() === 'CONFIRMED'
   ).length;
 
-  // Çizelge Birleştirme ve Sıralama
+  // Çizelge Birleştirme
   const timelineItems: TimelineItem[] = [
     ...appointments.map((app) => ({
       kind: 'APPOINTMENT' as const,
@@ -248,7 +296,6 @@ export default function AdminDashboard() {
           RANDEVULAR
         </h2>
 
-        {/* HIZLI SLOT OLUŞTUR BUTONU */}
         <button
           onClick={() => setIsSlotModalOpen(true)}
           className="bg-[#1A1A1A] text-white px-5 py-3 font-bold uppercase tracking-wider hover:bg-black transition-colors self-start sm:self-auto flex items-center gap-2 cursor-pointer"
@@ -276,7 +323,6 @@ export default function AdminDashboard() {
 
       {/* ZAMAN ÇİZELGESİ */}
       <div className="bg-white border border-gray-200 p-8 shadow-sm">
-        {/* TARİH NAVİGASYON OKLARI VE BAŞLIK */}
         <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-6">
           <div className="flex items-center gap-3">
             <button
@@ -317,7 +363,6 @@ export default function AdminDashboard() {
                 <span className="font-black text-lg w-20 text-[#1A1A1A]">{item.startTime}</span>
 
                 {item.kind === 'APPOINTMENT' ? (
-                  // DOLU SLOT (RANDEVU)
                   <div className="flex-1 bg-[#F5F4EF] border border-transparent p-4 mx-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <p className="font-bold text-[#1A1A1A] text-sm mb-1 flex items-center flex-wrap gap-2">
@@ -341,7 +386,6 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                 ) : (
-                  // BOŞ SLOT
                   <div className="flex-1 mx-4 text-gray-600 font-medium text-sm flex items-center justify-between bg-gray-50/50 p-4 border border-dashed border-gray-200">
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400 font-bold">Boş Slot</span>
@@ -356,7 +400,7 @@ export default function AdminDashboard() {
                       </button>
 
                       <button
-                        onClick={() => handleDeleteSlot(item.data.id)}
+                        onClick={() => handleDeleteSlotClick(item.data.id)}
                         className="border border-red-600 text-red-600 px-3 py-1 text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
                         title="Bu Slotu Sil"
                       >
@@ -511,6 +555,61 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* YENİ: SLOT SİLME ONAY MODALI */}
+      {slotToDeleteId && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)]">
+            <div className="bg-red-100 border-2 border-red-600 p-4 mb-6">
+              <h3 className="text-2xl font-black uppercase tracking-tighter text-red-600 mb-1">
+                SLOTU SİL
+              </h3>
+              <p className="text-red-800 font-bold text-xs uppercase tracking-wide">
+                Bu boş slotu silmek istediğinize emin misiniz?
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setSlotToDeleteId(null)}
+                className="flex-1 border-2 border-[#1A1A1A] bg-white text-[#1A1A1A] py-3 font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={executeDeleteSlot}
+                className="flex-1 border-2 border-red-600 bg-red-600 text-white py-3 font-bold uppercase tracking-wider hover:bg-red-700 transition-colors cursor-pointer"
+              >
+                Evet, Sil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YENİ: ÖZEL BİLDİRİM VE HATA MODALI */}
+      {modalConfig.isOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)]">
+            <div className={`inline-block px-3 py-1 text-xs font-black uppercase tracking-widest text-white mb-4 ${
+              modalConfig.type === 'success' ? 'bg-[#1A1A1A]' : 'bg-red-600'
+            }`}>
+              {modalConfig.type === 'success' ? 'BAŞARILI' : 'HATA'}
+            </div>
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-[#1A1A1A] mb-2">
+              {modalConfig.title}
+            </h3>
+            <p className="text-gray-700 font-bold text-sm mb-6">
+              {modalConfig.message}
+            </p>
+            <button
+              onClick={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
+              className="w-full bg-[#1A1A1A] text-white py-3 font-black uppercase tracking-widest border-2 border-[#1A1A1A] hover:bg-black transition-colors cursor-pointer"
+            >
+              TAMAM
+            </button>
           </div>
         </div>
       )}

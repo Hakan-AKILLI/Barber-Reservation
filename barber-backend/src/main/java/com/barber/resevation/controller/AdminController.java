@@ -67,14 +67,17 @@ public class AdminController {
     }
 
     // Günü Kapatma (Boş Slotları Silme): DELETE /api/v1/admin/slots/by-date
-    @DeleteMapping("/slots/by-date")
+    // URL YAPISI DEĞİŞTİ: /api/v1/admin/slots/by-date/1/2026-11-08
+    @DeleteMapping("/slots/by-date/{shopId}/{date}")
     public ResponseEntity<?> closeDayByDeletingEmptySlots(
-            @RequestParam Long shopId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @PathVariable("shopId") Long shopId,
+            @PathVariable("date") String dateStr) {
+
+        LocalDate date = LocalDate.parse(dateStr);
         timeSlotService.deleteEmptySlotsByDate(shopId, date);
+
         return ResponseEntity.ok("Seçilen tarihteki boş slotlar başarıyla temizlendi.");
     }
-
     // Berberin boş slot silmesi: DELETE /api/v1/admin/slots/{id}
     @DeleteMapping("/slots/{id}")
     public ResponseEntity<Void> deleteSlot(
