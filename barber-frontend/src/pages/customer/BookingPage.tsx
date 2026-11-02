@@ -122,6 +122,7 @@ export default function BookingPage() {
     );
   }
 
+// --- DÜKKAN AÇIKSA GÖSTERİLECEK NORMAL RANDEVU EKRANI ---
   return (
     <div className="min-h-screen bg-[#F6F5EFFF] text-gray-900 font-sans flex flex-col relative">
       <header className="flex justify-between items-center px-10 py-6 border-b-2 border-[#1A1A1A] bg-[#F6F5EFFF] z-10">
@@ -133,16 +134,19 @@ export default function BookingPage() {
       </header>
 
       <main className="flex flex-1 overflow-hidden h-[calc(100vh-100px)]">
-        <div className="flex-1 px-10 py-16 overflow-y-auto">
-          <h2 className="text-6xl md:text-7xl font-black tracking-tighter uppercase mb-3 text-[#1A1A1A]">RANDEVUNU SEÇ</h2>
-          <p className="text-gray-500 mb-12 text-xl font-medium">Bir gün ve boş saat seç.</p>
+        {/* SOL İÇERİK ALANI - Boşluklar (px-14, py-20) artırıldı */}
+        <div className="flex-1 px-10 md:px-14 py-16 md:py-20 overflow-y-auto">
+          {/* Başlık text-7xl/8xl yapıldı */}
+          <h2 className="text-7xl md:text-8xl font-black tracking-tighter uppercase mb-4 text-[#1A1A1A]">RANDEVUNU SEÇ</h2>
+          <p className="text-gray-500 mb-14 text-2xl font-medium">Bir gün ve boş saat seç.</p>
 
-          <div className="flex flex-wrap gap-4 mb-14">
+          <div className="flex flex-wrap gap-5 mb-16">
             {daysList.map((day) => (
               <button 
                 key={day.value} 
                 onClick={() => setSelectedDateObj(day)} 
-                className={`px-8 py-3 border-2 border-[#1A1A1A] font-black uppercase tracking-wider cursor-pointer transition-colors ${
+                /* Gün butonları px-10, py-4 ve text-lg yapılarak irileştirildi */
+                className={`px-10 py-4 text-lg border-2 border-[#1A1A1A] font-black uppercase tracking-wider cursor-pointer transition-colors ${
                   selectedDateObj.value === day.value 
                   ? 'bg-[#1A1A1A] text-white' 
                   : 'bg-transparent text-[#1A1A1A] hover:bg-gray-200'
@@ -153,19 +157,22 @@ export default function BookingPage() {
             ))}
           </div>
 
-          <div className="bg-white border-2 border-[#1A1A1A] p-10 w-full max-w-5xl shadow-[4px_4px_0px_0px_rgba(26,26,26,0.1)]">
-            <h3 className="text-2xl font-black uppercase tracking-widest mb-8 text-[#1A1A1A]">BOŞ SAATLER</h3>
+          {/* Kutu padding'i p-12 yapıldı, gölge (shadow) 4px'ten 8px'e çıkarıldı */}
+          <div className="bg-white border-2 border-[#1A1A1A] p-12 w-full max-w-5xl shadow-[8px_8px_0px_0px_rgba(26,26,26,0.1)]">
+            <h3 className="text-3xl font-black uppercase tracking-widest mb-10 text-[#1A1A1A]">BOŞ SAATLER</h3>
+            
             {loading ? (
-              <p className="text-gray-500 font-bold text-lg animate-pulse">Saatler yükleniyor...</p>
+              <p className="text-gray-500 font-bold text-xl animate-pulse">Saatler yükleniyor...</p>
             ) : slots.length === 0 ? (
-              <p className="text-gray-500 font-bold text-lg border-2 border-dashed border-gray-300 p-8 text-center">Bu tarihte uygun saat bulunmuyor.</p>
+              <p className="text-gray-500 font-bold text-xl border-2 border-dashed border-gray-300 p-10 text-center">Bu tarihte uygun saat bulunmuyor.</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                 {slots.map((slot) => (
                   <button 
                     key={slot.id} 
                     onClick={() => setSelectedSlot(slot)} 
-                    className="px-4 py-4 border-2 border-[#1A1A1A] text-center font-black text-lg hover:bg-[#1A1A1A] hover:text-white cursor-pointer transition-colors"
+                    /* Saat butonları px-6, py-5 ve text-xl yapılarak daha rahat tıklanabilir hale getirildi */
+                    className="px-6 py-5 border-2 border-[#1A1A1A] text-center font-black text-xl hover:bg-[#1A1A1A] hover:text-white cursor-pointer transition-colors"
                   >
                     {slot.startTime.slice(0, 5)}
                   </button>
@@ -175,8 +182,19 @@ export default function BookingPage() {
           </div>
         </div>
 
-        <div className="hidden lg:flex w-[35%] bg-[#EBE9E1] border-l-2 border-dashed border-gray-400 items-center justify-center relative overflow-hidden">
-          <span className="text-gray-400 font-bold tracking-widest text-center px-4">[ {shop.name} FOTOĞRAFI ]</span>
+        {/* SAĞ SÜTUN - FOTOĞRAF ALANI */}
+        <div className="hidden lg:flex w-[35%] border-l-2 border-[#1A1A1A] relative overflow-hidden bg-[#EBE9E1]">
+          <img 
+            src="/barber.jpeg" 
+            alt="Berber Dükkanı" 
+            className="w-full h-full object-cover"
+          />
+          
+          <div className="absolute inset-0 bg-black/20 flex items-end p-8">
+            <span className="text-white font-black text-3xl uppercase tracking-widest drop-shadow-lg">
+              {shop.name}
+            </span>
+          </div>
         </div>
       </main>
 
