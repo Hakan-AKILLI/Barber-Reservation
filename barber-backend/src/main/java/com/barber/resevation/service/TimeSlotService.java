@@ -36,15 +36,26 @@ public class TimeSlotService {
         return timeSlotRepository.findByShopIdAndSlotDateAndActiveTrueAndBookedFalseOrderByStartTimeAsc(shopId, date);
     }
 
-    // Berberin tekil slot açması
+// Berberin tekil slot açması
     @Transactional
     public TimeSlot createSlot(Long shopId, CreateTimeSlotRequest request) {
 
-        // 1. Önce slotun ekleneceği dükkanı buluyoruz
+        boolean isOverlapping = timeSlotRepository.existsOverlappingSlot(
+                shopId,
+                request.getSlotDate(),
+                request.getStartTime(),
+                request.getEndTime()
+        );
+
+        if (isOverlapping) {
+            throw new IllegalArgumentException("Bu saat aralığında önceden oluşturulmuş veya çakışan bir slot bulunuyor. Lütfen önce mevcut slotları temizleyin.");
+        }
+
+
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new RuntimeException("Dükkan bulunamadı!"));
 
-        // 2. Slotu oluştururken dükkanı da içine ekliyoruz
+        // 3. Slotu oluştur ve dükkanı içine ekle
         TimeSlot slot = TimeSlot.builder()
                 .shop(shop)
                 .slotDate(request.getSlotDate())
@@ -61,14 +72,21 @@ public class TimeSlotService {
     @Transactional
     public List<TimeSlot> generateSlots(Long shopId, LocalDate date, LocalTime start, LocalTime end, int duration) {
 
-        // 1. Önce dükkanı bul
+        // 1. FAIL-FAST: İşleme başlamadan önce çakışma kontrolü yapıyoruz.
+        // Çakışma varsa döngüye ve DB sorgusuna hiç girmeden anında metodu kesiyoruz.
+        boolean isOverlapping = timeSlotRepository.existsOverlappingSlot(shopId, date, start, end);
+        if (isOverlapping) {
+            throw new IllegalArgumentException("Bu saat aralığında önceden oluşturulmuş veya çakışan bir slot bulunuyor. Lütfen önce mevcut slotları temizleyin.");
+        }
+
+        // 2. Dükkanı bul (Kontrolden geçtikten sonra DB'ye gidiyoruz)
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new RuntimeException("Dükkan bulunamadı!"));
 
+        // 3. Güvenli bölge: Artık slotları üretip kaydedebiliriz
         List<TimeSlot> slots = new ArrayList<>();
         LocalTime currentTime = start;
 
-        // Slotları üretme döngüsü
         while (currentTime.isBefore(end)) {
             TimeSlot slot = new TimeSlot();
             slot.setShop(shop);
@@ -93,7 +111,9 @@ public class TimeSlotService {
                 .orElseThrow(() -> new RuntimeException("Slot bulunamadı!"));
 
         // 2. Güvenlik Kontrolü: Slot gerçekten bu dükkana mı ait?
-        if (!slot.getShop().getId().equals(shopId)) {
+        if (!slot.getShop()
+                .getId()
+                .equals(shopId)) {
             throw new RuntimeException("Bu slot belirtilen dükkana ait değil!");
         }
 

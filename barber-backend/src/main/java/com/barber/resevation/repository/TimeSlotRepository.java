@@ -8,15 +8,13 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
     // GÜNCELLENDİ: Müşterinin göreceği liste: SEÇİLEN DÜKKANIN o günün boş ve aktif olan saatleri
     List<TimeSlot> findByShopIdAndSlotDateAndActiveTrueAndBookedFalseOrderByStartTimeAsc(Long shopId, LocalDate slotDate);
-
-    // GÜNCELLENDİ: Berberin göreceği liste: SEÇİLEN DÜKKANIN o gün açılmış tüm saatleri (dolu veya boş)
-    List<TimeSlot> findByShopIdAndSlotDateOrderByStartTimeAsc(Long shopId, LocalDate slotDate);
 
     // --- SİSTEM GENELİ OTOMATİK TEMİZLEYİCİ (CRON) ---
     // Bu metot tüm dükkanlardaki geçmiş tarihi geçmiş boş saatleri aynı anda temizlemek için global bırakıldı.
@@ -27,7 +25,16 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
     // --- BELİRLİ BİR DÜKKANIN SEÇİLEN GÜNDEKİ BOŞ SLOTLARINI TEMİZLEME (GÜNÜ KAPATMA) ---
     @Modifying
-    @Transactional
-    @Query("DELETE FROM TimeSlot t WHERE t.shop = :shop AND t.slotDate = :slotDate AND (t.booked = false OR t.booked IS NULL) AND NOT EXISTS (SELECT a FROM Appointment a WHERE a.timeSlot = t)")
-    int deleteUnbookedSlotsByShopAndDate(@Param("shopId") Long shopId, @Param("slotDate") LocalDate slotDate);
+    @Query("DELETE FROM TimeSlot t WHERE t.shop.id = :shop AND t.slotDate = :date AND t.booked = false")
+    int deleteUnbookedSlotsByShopAndDate(
+            @Param("shop") Long shopId,
+            @Param("date") LocalDate date
+    );
+
+    @Query("SELECT COUNT(t) > 0 FROM TimeSlot t WHERE t.shop.id = :shopId AND t.slotDate = :date AND t.startTime < :endTime AND t.endTime > :startTime")
+    boolean existsOverlappingSlot(
+            @Param("shopId") Long shopId,
+            @Param("date") LocalDate date,
+            @Param("startTime") LocalTime startTime,
+            @Param("endTime") LocalTime endTime);
 }

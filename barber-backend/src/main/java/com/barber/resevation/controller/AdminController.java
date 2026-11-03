@@ -67,7 +67,6 @@ public class AdminController {
     }
 
     // Günü Kapatma (Boş Slotları Silme): DELETE /api/v1/admin/slots/by-date
-    // URL YAPISI DEĞİŞTİ: /api/v1/admin/slots/by-date/1/2026-11-08
     @DeleteMapping("/slots/by-date/{shopId}/{date}")
     public ResponseEntity<?> closeDayByDeletingEmptySlots(
             @PathVariable("shopId") Long shopId,
