@@ -4,6 +4,7 @@ import com.barber.resevation.dto.AppointmentBookingRequest;
 import com.barber.resevation.entity.Appointment;
 import com.barber.resevation.entity.TimeSlot;
 import com.barber.resevation.repository.AppointmentRepository;
+import com.barber.resevation.repository.BlacklistRepository;
 import com.barber.resevation.repository.TimeSlotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,14 +19,28 @@ public class AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final TimeSlotRepository timeSlotRepository;
+    private final BlacklistRepository blacklistRepository;
     private final WhatsAppNotificationService whatsAppNotificationService;
 
     @Transactional
     public Appointment bookAppointment(AppointmentBookingRequest request) {
-        // 1. Slot var mı ve müsait mi kontrol et
+        // 1. Önce slotu bul (Dükkan bilgisine ulaşmak için)
         TimeSlot slot = timeSlotRepository.findById(request.getTimeSlotId())
                 .orElseThrow(() -> new IllegalArgumentException("Seçilen saat dilimi bulunamadı."));
 
+        // 2. [YENİ] KARA LİSTE KONTROLÜ (Fail-Fast)
+        // Müşterinin bu dükkandan banlanıp banlanmadığını kontrol ediyoruz
+        boolean isBanned = blacklistRepository.existsByShopIdAndCustomerPhone(
+                slot.getShop().getId(),
+                request.getCustomerPhone()
+        );
+
+        if (isBanned) {
+            // Numara kara listedeyse hemen işlemi kes ve özel hata mesajını fırlat
+            throw new IllegalArgumentException("Bu telefon numarası kara listede olduğu için randevu alamaz.");
+        }
+
+        // 3. Slot müsaitlik durumlarını kontrol et
         if (!slot.isActive()) {
             throw new IllegalStateException("Bu saat dilimi berber tarafından kapatılmıştır.");
         }
@@ -34,11 +49,11 @@ public class AppointmentService {
             throw new IllegalStateException("Seçtiğiniz saat az önce rezerve edildi, lütfen başka bir saat seçin.");
         }
 
-        // 2. Slot'u kapat (booked = true)
+        // 4. Slot'u kapat (booked = true)
         slot.setBooked(true);
         timeSlotRepository.save(slot);
 
-        // 3. Randevuyu kaydet
+        // 5. Randevuyu kaydet
         Appointment appointment = Appointment.builder()
                 .shop(slot.getShop()) // KRİTİK EKLENTİ: Randevuyu slotun ait olduğu dükkana bağlıyoruz
                 .customerName(request.getCustomerName())
@@ -50,12 +65,11 @@ public class AppointmentService {
         // Veritabanına kaydet ve kaydedilen objeyi bir değişkene al
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
-        // 4. WhatsApp üzerinden randevu onay mesajını gönder
+        // 6. WhatsApp üzerinden randevu onay mesajını gönder
         whatsAppNotificationService.sendAppointmentConfirmation(savedAppointment.getCustomerPhone());
 
         return savedAppointment;
     }
-
     @Transactional
     public void cancelAppointment(String cancellationCode) {
         // İptal kodu zaten eşsiz (unique) olduğu için burada shopId'ye gerek yok.

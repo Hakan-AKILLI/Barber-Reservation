@@ -1,119 +1,325 @@
-import { useState, useEffect } from 'react';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { 
-  getShopBySlug, 
-  getAdminAppointments, 
-  getAvailableSlots, 
-  updateAppointmentStatus, 
+import type { TimeSlot } from '../../types';
+import {
+  getShopBySlug,
+  getAdminAppointments,
+  getAvailableSlots,
+  banCustomer,
+  updateAppointmentStatus,
   bookAppointment,
   deleteSlot,
   createSingleSlot,
-  type Appointment
+  type Appointment,
 } from '../../services/api';
-
-import type { TimeSlot } from '../../types';
-
-type TimelineItem = 
+ 
+/* -------------------------------------------------------------------------- */
+/*  Tipler                                                                    */
+/* -------------------------------------------------------------------------- */
+ 
+type TimelineItem =
   | { kind: 'APPOINTMENT'; startTime: string; data: Appointment }
   | { kind: 'EMPTY_SLOT'; startTime: string; data: TimeSlot };
-
+ 
+type FeedbackModalState = {
+  isOpen: boolean;
+  type: 'success' | 'error';
+  title: string;
+  message: string;
+};
+ 
+/* -------------------------------------------------------------------------- */
+/*  Sabitler                                                                  */
+/* -------------------------------------------------------------------------- */
+ 
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const ACTIVE_STATUSES = ['CONFIRMED', 'PENDING'];
+ 
+const INITIAL_FEEDBACK: FeedbackModalState = {
+  isOpen: false,
+  type: 'success',
+  title: '',
+  message: '',
+};
+ 
+/* -------------------------------------------------------------------------- */
+/*  Yardımcı Fonksiyonlar                                                     */
+/* -------------------------------------------------------------------------- */
+ 
+/** Date nesnesini yerel saate göre YYYY-MM-DD formatına çevirir. */
+const formatDateISO = (date: Date): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+ 
+/** Verilen YYYY-MM-DD tarihini gün bazında kaydırır (saat dilimi güvenli). */
+const shiftDate = (dateStr: string, deltaDays: number): string => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return formatDateISO(new Date(year, month - 1, day + deltaDays));
+};
+ 
+/** "HH:mm:ss" -> "HH:mm" */
+const toHourMinute = (time: string): string => time.slice(0, 5);
+ 
+/** Axios benzeri hatalardan okunabilir mesaj çıkarır. */
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const data = (error as { response?: { data?: unknown } }).response?.data;
+    if (typeof data === 'string' && data.trim()) return data;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+ 
+const getStatusStyle = (status: string): string => {
+  switch (status?.toUpperCase()) {
+    case 'CANCELLED':
+      return 'text-red-600';
+    case 'COMPLETED':
+      return 'text-green-600';
+    default:
+      return 'text-blue-600';
+  }
+};
+ 
+/* -------------------------------------------------------------------------- */
+/*  Ortak Modal Bileşenleri                                                   */
+/* -------------------------------------------------------------------------- */
+ 
+function ModalOverlay({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+    >
+      {children}
+    </div>
+  );
+}
+ 
+interface ConfirmModalProps {
+  title: string;
+  message: string;
+  cancelLabel?: string;
+  confirmLabel: string;
+  variant: 'danger' | 'dark';
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+ 
+function ConfirmModal({
+  title,
+  message,
+  cancelLabel = 'Vazgeç',
+  confirmLabel,
+  variant,
+  onCancel,
+  onConfirm,
+}: ConfirmModalProps) {
+  const isDanger = variant === 'danger';
+ 
+  return (
+    <ModalOverlay label={title}>
+      <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)]">
+        <div
+          className={`border-2 p-4 mb-6 ${
+            isDanger ? 'bg-red-100 border-red-600' : 'bg-[#1A1A1A] border-[#1A1A1A]'
+          }`}
+        >
+          <h3
+            className={`text-2xl font-black uppercase tracking-tighter mb-1 ${
+              isDanger ? 'text-red-600' : 'text-white'
+            }`}
+          >
+            {title}
+          </h3>
+          <p
+            className={`font-bold text-xs uppercase tracking-wide ${
+              isDanger ? 'text-red-800' : 'text-gray-300'
+            }`}
+          >
+            {message}
+          </p>
+        </div>
+ 
+        <div className="flex gap-4">
+          <button
+            onClick={onCancel}
+            className="flex-1 border-2 border-[#1A1A1A] bg-white text-[#1A1A1A] py-3 font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`flex-1 border-2 text-white py-3 font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+              isDanger
+                ? 'border-red-600 bg-red-600 hover:bg-red-700'
+                : 'border-[#1A1A1A] bg-[#1A1A1A] hover:bg-black'
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+}
+ 
+/* -------------------------------------------------------------------------- */
+/*  Ana Bileşen                                                               */
+/* -------------------------------------------------------------------------- */
+ 
 export default function AdminDashboard() {
   const { slug } = useParams<{ slug: string }>();
-  const [searchParams] = useSearchParams();
-  const dateParam = searchParams.get('date');
-  
+  const [searchParams, setSearchParams] = useSearchParams();
+ 
+  /* ----------------------------- Veri State'leri ---------------------------- */
   const [shopId, setShopId] = useState<number | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
-
-  // Tarih State'i
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    if (dateParam) return dateParam;
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  });
-
-  // Manuel Randevu Ekleme Modal State'leri
+ 
+  /* --------------------------- Tarih (URL ile senkron) ---------------------- */
+  const dateParam = searchParams.get('date');
+  const selectedDate =
+    dateParam && DATE_REGEX.test(dateParam) ? dateParam : formatDateISO(new Date());
+ 
+  const changeDate = useCallback(
+    (newDate: string) => {
+      setSearchParams({ date: newDate }, { replace: true });
+    },
+    [setSearchParams]
+  );
+ 
+  const handlePrevDay = () => changeDate(shiftDate(selectedDate, -1));
+  const handleNextDay = () => changeDate(shiftDate(selectedDate, 1));
+ 
+  /* ----------------------------- Modal State'leri --------------------------- */
+  // Manuel randevu
   const [selectedSlotForBooking, setSelectedSlotForBooking] = useState<TimeSlot | null>(null);
   const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
   const [manualService, setManualService] = useState('');
   const [isManualBooking, setIsManualBooking] = useState(false);
-
-  // Hızlı Slot Oluşturma Modal State'leri
+ 
+  // Hızlı slot oluşturma
   const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
   const [quickStart, setQuickStart] = useState('');
   const [quickEnd, setQuickEnd] = useState('');
   const [isQuickSlotLoading, setIsQuickSlotLoading] = useState(false);
-
-  // YENİ: Bildirim ve Onay Modalı State'leri
-  const [modalConfig, setModalConfig] = useState<{
-    isOpen: boolean;
-    type: 'success' | 'error';
-    title: string;
-    message: string;
-  }>({
-    isOpen: false,
-    type: 'success',
-    title: '',
-    message: ''
-  });
-
+ 
+  // Onay modalları
+  const [appointmentToCancel, setAppointmentToCancel] = useState<number | null>(null);
   const [slotToDeleteId, setSlotToDeleteId] = useState<number | null>(null);
-
-  const triggerRefresh = () => {
-    setRefreshCount((prev) => prev + 1);
+  const [customerToBanPhone, setCustomerToBanPhone] = useState<string | null>(null);
+ 
+  // Bildirim modalı
+  const [feedback, setFeedback] = useState<FeedbackModalState>(INITIAL_FEEDBACK);
+ 
+  /* ------------------------------ Yardımcılar ------------------------------- */
+  const triggerRefresh = () => setRefreshCount((prev) => prev + 1);
+ 
+  const showFeedback = (type: FeedbackModalState['type'], title: string, message: string) =>
+    setFeedback({ isOpen: true, type, title, message });
+ 
+  const showError = (message: string, title = 'HATA') => showFeedback('error', title, message);
+ 
+  const resetManualForm = () => {
+    setSelectedSlotForBooking(null);
+    setManualName('');
+    setManualPhone('');
+    setManualService('');
   };
-
-  const handlePrevDay = () => {
-    const date = new Date(selectedDate);
-    date.setDate(date.getDate() - 1);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    setSelectedDate(`${yyyy}-${mm}-${dd}`);
+ 
+  const resetQuickSlotForm = () => {
+    setIsSlotModalOpen(false);
+    setQuickStart('');
+    setQuickEnd('');
   };
-
-  const handleNextDay = () => {
-    const date = new Date(selectedDate);
-    date.setDate(date.getDate() + 1);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    setSelectedDate(`${yyyy}-${mm}-${dd}`);
-  };
-
-  // 1. Slug üzerinden Dükkan ID bul
+ 
+  /* ------------------------- Escape ile modal kapatma ------------------------ */
   useEffect(() => {
-    const fetchShop = async () => {
-      if (!slug) return;
-      try {
-        const shop = await getShopBySlug(slug);
-        setShopId(shop.id);
-      } catch (error) {
-        console.error('Dükkan bulunamadı:', error);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+ 
+      if (feedback.isOpen) {
+        setFeedback((prev) => ({ ...prev, isOpen: false }));
+      } else if (appointmentToCancel !== null) {
+        setAppointmentToCancel(null);
+      } else if (slotToDeleteId !== null) {
+        setSlotToDeleteId(null);
+      } else if (customerToBanPhone !== null) {
+        setCustomerToBanPhone(null);
+      } else if (selectedSlotForBooking) {
+        setSelectedSlotForBooking(null);
+        setManualName('');
+        setManualPhone('');
+        setManualService('');
+      } else if (isSlotModalOpen) {
+        setIsSlotModalOpen(false);
+        setQuickStart('');
+        setQuickEnd('');
       }
     };
-    fetchShop();
-  }, [slug]);
-
-  // 2. Seçilen Tarihe Göre Verileri Çekme
+ 
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    feedback.isOpen,
+    appointmentToCancel,
+    slotToDeleteId,
+    customerToBanPhone,
+    selectedSlotForBooking,
+    isSlotModalOpen,
+  ]);
+ 
+  /* ------------------------ 1. Slug -> Dükkan ID bulma ----------------------- */
   useEffect(() => {
-    if (!shopId) return;
-
+    if (!slug) return;
+ 
     let isMounted = true;
-    
+ 
+    const fetchShop = async () => {
+      try {
+        const shop = await getShopBySlug(slug);
+        if (isMounted) setShopId(shop.id);
+      } catch (error) {
+        console.error('Dükkan bulunamadı:', error);
+        if (isMounted) {
+          setLoadError('Dükkan bulunamadı.');
+          setLoading(false);
+        }
+      }
+    };
+ 
+    fetchShop();
+ 
+    return () => {
+      isMounted = false;
+    };
+  }, [slug]);
+ 
+  /* ------------------- 2. Seçilen tarihe göre veri çekme --------------------- */
+  useEffect(() => {
+    if (shopId === null) return;
+ 
+    let isMounted = true;
+ 
     const loadDashboardData = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const [appointmentsData, slotsData] = await Promise.all([
           getAdminAppointments(shopId, selectedDate),
-          getAvailableSlots(shopId, selectedDate)
+          getAvailableSlots(shopId, selectedDate),
         ]);
         if (isMounted) {
           setAppointments(appointmentsData);
@@ -121,56 +327,81 @@ export default function AdminDashboard() {
         }
       } catch (error) {
         console.error('Veriler çekilemedi:', error);
-      } finally {
         if (isMounted) {
-          setLoading(false);
+          setLoadError('Veriler yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.');
         }
+      } finally {
+        if (isMounted) setLoading(false);
       }
     };
-
+ 
     loadDashboardData();
-
+ 
     return () => {
       isMounted = false;
     };
   }, [shopId, selectedDate, refreshCount]);
-
-  // Statü Güncelleme
+ 
+  /* ------------------------------ İşlem Fonksiyonları ----------------------- */
+ 
+  // Randevu durumu güncelleme
   const handleStatusChange = async (appointmentId: number, newStatus: string) => {
-    if (!shopId) return;
+    if (shopId === null) return;
     try {
       await updateAppointmentStatus(appointmentId, shopId, newStatus);
-      
-      setAppointments((prevAppointments) =>
-        prevAppointments.map((app) =>
-          app.id === appointmentId ? { ...app, status: newStatus as Appointment['status'] } : app
-        )
-      );
+      // Slotlar da değişebileceği için (iptal -> slot tekrar boşa çıkar) tam yenileme yapılır.
+      triggerRefresh();
     } catch (error) {
       console.error('Durum güncellenemedi:', error);
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'HATA',
-        message: 'Randevu durumu güncellenirken bir hata oluştu.'
-      });
+      showError('Randevu durumu güncellenirken bir hata oluştu.');
     }
   };
-
-  // Manuel Randevu Oluşturma
-  const handleCreateManualBooking = async (e: React.FormEvent) => {
+ 
+  // Randevu iptal akışı
+  const handleCancelClick = (id: number) => setAppointmentToCancel(id);
+ 
+  const executeCancel = async () => {
+    if (appointmentToCancel === null) return;
+ 
+    const appointmentId = appointmentToCancel;
+    setAppointmentToCancel(null);
+ 
+    await handleStatusChange(appointmentId, 'CANCELLED');
+  };
+ 
+  // Kara listeye alma akışı
+  const handleBanCustomerClick = (phone: string) => setCustomerToBanPhone(phone);
+ 
+  const executeBanCustomer = async () => {
+    if (shopId === null || !customerToBanPhone) return;
+ 
+    const phone = customerToBanPhone;
+    setCustomerToBanPhone(null);
+ 
+    try {
+      await banCustomer(shopId, phone);
+      showFeedback(
+        'success',
+        'BANLANDI',
+        `${phone} numaralı müşteri başarıyla kara listeye eklendi.`
+      );
+      triggerRefresh();
+    } catch (error: unknown) {
+      console.error('Banlama işlemi başarısız:', error);
+      showError(getErrorMessage(error, 'Müşteri kara listeye eklenirken bir sorun oluştu.'));
+    }
+  };
+ 
+  // Manuel randevu oluşturma
+  const handleCreateManualBooking = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedSlotForBooking) return;
+ 
     if (!manualName.trim() || !manualPhone.trim() || !manualService.trim()) {
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'EKSİK BİLGİ',
-        message: 'Lütfen ad, telefon ve hizmet alanlarını doldurun.'
-      });
+      showError('Lütfen ad, telefon ve hizmet alanlarını doldurun.', 'EKSİK BİLGİ');
       return;
     }
-
+ 
     setIsManualBooking(true);
     try {
       await bookAppointment({
@@ -179,123 +410,111 @@ export default function AdminDashboard() {
         customerPhone: manualPhone.trim(),
         serviceType: manualService.trim(),
       });
-
-      setSelectedSlotForBooking(null);
-      setManualName('');
-      setManualPhone('');
-      setManualService('');
-
+ 
+      resetManualForm();
       triggerRefresh();
     } catch (error) {
       console.error('Manuel randevu oluşturulurken hata:', error);
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'HATA',
-        message: 'Randevu oluşturulamadı. Lütfen tekrar deneyin.'
-      });
+      showError(getErrorMessage(error, 'Randevu oluşturulamadı. Lütfen tekrar deneyin.'));
     } finally {
       setIsManualBooking(false);
     }
   };
-
-  // Seçili Güne Hızlı Slot Oluşturma
-  const handleQuickSlotSubmit = async (e: React.FormEvent) => {
+ 
+  // Hızlı slot oluşturma
+  const handleQuickSlotSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!shopId) return;
+    if (shopId === null) return;
+ 
     if (!quickStart || !quickEnd) {
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'EKSİK BİLGİ',
-        message: 'Lütfen başlangıç ve bitiş saatlerini seçin.'
-      });
+      showError('Lütfen başlangıç ve bitiş saatlerini seçin.', 'EKSİK BİLGİ');
       return;
     }
-
+ 
+    if (quickEnd <= quickStart) {
+      showError('Bitiş saati, başlangıç saatinden sonra olmalıdır.', 'GEÇERSİZ SAAT');
+      return;
+    }
+ 
     setIsQuickSlotLoading(true);
     try {
       await createSingleSlot(shopId, {
         slotDate: selectedDate,
         startTime: `${quickStart}:00`,
-        endTime: `${quickEnd}:00`
+        endTime: `${quickEnd}:00`,
       });
-
-      setIsSlotModalOpen(false);
-      setQuickStart('');
-      setQuickEnd('');
+ 
+      resetQuickSlotForm();
       triggerRefresh();
     } catch (error) {
       console.error('Slot oluşturulurken hata:', error);
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'HATA',
-        message: 'Slot oluşturulamadı.'
-      });
+      showError(getErrorMessage(error, 'Slot oluşturulamadı.'));
     } finally {
       setIsQuickSlotLoading(false);
     }
   };
-
-  // Boş Slot Silme Onayını Başlatma
-  const handleDeleteSlotClick = (slotId: number) => {
-    setSlotToDeleteId(slotId);
-  };
-
-  // Boş Slotu Gerçekten Silme
+ 
+  // Boş slot silme
+  const handleDeleteSlotClick = (slotId: number) => setSlotToDeleteId(slotId);
+ 
   const executeDeleteSlot = async () => {
-    if (!shopId || !slotToDeleteId) return;
-
+    if (shopId === null || slotToDeleteId === null) return;
+ 
+    const slotId = slotToDeleteId;
+    setSlotToDeleteId(null);
+ 
     try {
-      await deleteSlot(slotToDeleteId, shopId);
-      setSlotToDeleteId(null);
+      await deleteSlot(slotId, shopId);
       triggerRefresh();
     } catch (error) {
       console.error('Slot silinemedi:', error);
-      setModalConfig({
-        isOpen: true,
-        type: 'error',
-        title: 'HATA',
-        message: 'Slot silinirken bir hata oluştu.'
-      });
+      showError(getErrorMessage(error, 'Slot silinirken bir hata oluştu.'));
     }
   };
-
-  // İstatistikler
-  const totalAppointments = appointments.length;
-  const pendingAppointments = appointments.filter(
-    (a) => a.status?.toUpperCase() === 'CONFIRMED'
-  ).length;
-
-  // Çizelge Birleştirme
-  const timelineItems: TimelineItem[] = [
-    ...appointments.map((app) => ({
-      kind: 'APPOINTMENT' as const,
-      startTime: app.timeSlot.startTime.slice(0, 5),
-      data: app
-    })),
-    ...availableSlots.map((slot) => ({
-      kind: 'EMPTY_SLOT' as const,
-      startTime: slot.startTime.slice(0, 5),
-      data: slot
-    }))
-  ].sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-  const getStatusStyle = (status: string, isSelectBox = false) => {
-    const s = status?.toUpperCase();
-    if (s === 'CANCELLED') return isSelectBox ? 'border-red-600 text-red-600' : 'text-red-600';
-    if (s === 'COMPLETED') return isSelectBox ? 'border-green-600 text-green-600' : 'text-green-600';
-    return isSelectBox ? 'border-blue-600 text-blue-600' : 'text-blue-600';
-  };
-
+ 
+  /* ------------------------------- Hesaplamalar ----------------------------- */
+ 
+  const totalAppointments = useMemo(
+    () => appointments.filter((a) => a.status?.toUpperCase() !== 'CANCELLED').length,
+    [appointments]
+  );
+ 
+  const pendingAppointments = useMemo(
+    () => appointments.filter((a) => ACTIVE_STATUSES.includes(a.status?.toUpperCase())).length,
+    [appointments]
+  );
+ 
+  const timelineItems: TimelineItem[] = useMemo(
+    () =>
+      [
+        ...appointments.map(
+          (app): TimelineItem => ({
+            kind: 'APPOINTMENT',
+            startTime: toHourMinute(app.timeSlot.startTime),
+            data: app,
+          })
+        ),
+        ...availableSlots.map(
+          (slot): TimelineItem => ({
+            kind: 'EMPTY_SLOT',
+            startTime: toHourMinute(slot.startTime),
+            data: slot,
+          })
+        ),
+      ].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [appointments, availableSlots]
+  );
+ 
+  /* ---------------------------------- Render -------------------------------- */
+ 
   return (
-    <div className="max-w-5xl mx-auto relative">
+    <div className="max-w-7xl mx-auto relative">
+      {/* BAŞLIK */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase text-[#1A1A1A]">
+        <h2 className="text-6xl md:text-5xl font-black tracking-tighter uppercase text-[#1A1A1A]">
           RANDEVULAR
         </h2>
-
+ 
         <button
           onClick={() => setIsSlotModalOpen(true)}
           className="bg-[#1A1A1A] text-white px-5 py-3 font-bold uppercase tracking-wider hover:bg-black transition-colors self-start sm:self-auto flex items-center gap-2 cursor-pointer"
@@ -304,7 +523,7 @@ export default function AdminDashboard() {
           <span>Slot Oluştur</span>
         </button>
       </div>
-
+ 
       {/* İSTATİSTİK KUTULARI */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         <div className="bg-white border border-gray-200 p-8 shadow-sm flex flex-col justify-center">
@@ -320,7 +539,7 @@ export default function AdminDashboard() {
           </span>
         </div>
       </div>
-
+ 
       {/* ZAMAN ÇİZELGESİ */}
       <div className="bg-white border border-gray-200 p-8 shadow-sm">
         <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-6">
@@ -329,6 +548,7 @@ export default function AdminDashboard() {
               onClick={handlePrevDay}
               className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer"
               title="Önceki Gün"
+              aria-label="Önceki Gün"
             >
               ‹
             </button>
@@ -336,6 +556,7 @@ export default function AdminDashboard() {
               onClick={handleNextDay}
               className="w-10 h-10 border-2 border-[#1A1A1A] font-black text-xl hover:bg-[#1A1A1A] hover:text-white transition-colors flex items-center justify-center cursor-pointer"
               title="Sonraki Gün"
+              aria-label="Sonraki Gün"
             >
               ›
             </button>
@@ -344,143 +565,101 @@ export default function AdminDashboard() {
             </h3>
           </div>
         </div>
-
+ 
         {loading ? (
-          <p className="text-gray-500 font-bold animate-pulse py-4">Slotlar ve randevular yükleniyor...</p>
+          <p className="text-gray-500 font-bold animate-pulse py-4">
+            Slotlar ve randevular yükleniyor...
+          </p>
+        ) : loadError ? (
+          <div className="py-8 text-center text-red-600 font-bold">{loadError}</div>
         ) : timelineItems.length === 0 ? (
           <div className="py-8 text-center text-gray-500 font-bold">
-            Bu tarih ({selectedDate}) için henüz hiç slot oluşturulmamış. Sağ üstteki "+ Slot Oluştur" butonundan ekleyebilirsiniz.
+            Bu tarih ({selectedDate}) için henüz hiç slot oluşturulmamış. Sağ üstteki "+ Slot
+            Oluştur" butonundan ekleyebilirsiniz.
           </div>
         ) : (
           <div className="flex flex-col">
-            {timelineItems.map((item, index) => (
-              <div 
-                key={`${item.startTime}-${index}`} 
-                className={`flex items-center justify-between py-5 ${
-                  index !== timelineItems.length - 1 ? 'border-b border-gray-100' : ''
-                }`}
+            {timelineItems.map((item) => (
+              <div
+                key={`${item.kind}-${item.data.id}`}
+                className="flex items-center justify-between py-5 border-b border-gray-100"
               >
                 <span className="font-black text-lg w-20 text-[#1A1A1A]">{item.startTime}</span>
-
+ 
                 {item.kind === 'APPOINTMENT' ? (
-                  <div className="flex-1 bg-[#F5F4EF] border border-transparent p-4 mx-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <p className="font-bold text-[#1A1A1A] text-sm mb-1 flex items-center flex-wrap gap-2">
-                        <span>[{item.data.customerName}] • {item.data.customerPhone}</span>
-                        <span className="text-gray-300">•</span>
-                        <span className={`text-xs uppercase tracking-widest font-black ${getStatusStyle(item.data.status)}`}>
-                          {item.data.status}
-                        </span>
-                      </p>
-                      <p className="text-gray-500 text-xs">{item.data.serviceType}</p>
-                    </div>
-                    
-                    <select
-                      value={item.data.status?.toLowerCase()} 
-                      onChange={(e) => handleStatusChange(item.data.id, e.target.value.toUpperCase())}
-                      className={`border-2 bg-white px-4 py-2 text-sm font-bold uppercase outline-none cursor-pointer transition-colors ${getStatusStyle(item.data.status, true)}`}
-                    >
-                      <option value="confirmed">confirmed</option>
-                      <option value="completed">completed</option>
-                      <option value="cancelled">cancelled</option>
-                    </select>
-                  </div>
+                  <AppointmentRow
+                    appointment={item.data}
+                    onCancel={handleCancelClick}
+                    onBan={handleBanCustomerClick}
+                  />
                 ) : (
-                  <div className="flex-1 mx-4 text-gray-600 font-medium text-sm flex items-center justify-between bg-gray-50/50 p-4 border border-dashed border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-400 font-bold">Boş Slot</span>
-                      
-                      <button
-                        onClick={() => setSelectedSlotForBooking(item.data)}
-                        className="bg-[#1A1A1A] text-white px-3 py-1 text-xs font-bold uppercase tracking-wider hover:bg-black transition-colors flex items-center gap-1 cursor-pointer"
-                        title="Telefonla Arayan Müşteri İçin Randevu Ekle"
-                      >
-                        <span className="text-sm font-black">+</span>
-                        <span>Randevu Ekle</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteSlotClick(item.data.id)}
-                        className="border border-red-600 text-red-600 px-3 py-1 text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
-                        title="Bu Slotu Sil"
-                      >
-                        Slot Sil
-                      </button>
-                    </div>
-
-                    <span className="text-xs text-gray-400 font-mono">
-                      {item.data.startTime.slice(0, 5)} - {item.data.endTime.slice(0, 5)}
-                    </span>
-                  </div>
+                  <EmptySlotRow
+                    slot={item.data}
+                    onAddAppointment={setSelectedSlotForBooking}
+                    onDelete={handleDeleteSlotClick}
+                  />
                 )}
               </div>
             ))}
           </div>
         )}
       </div>
-
+ 
       {/* MANUEL RANDEVU EKLEME MODALI */}
       {selectedSlotForBooking && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <ModalOverlay label="Manuel Randevu Oluştur">
           <div className="bg-[#F5F4EF] p-8 w-full max-w-md shadow-2xl relative border-4 border-[#1A1A1A]">
             <h3 className="text-2xl font-black uppercase tracking-tighter mb-1 text-[#1A1A1A]">
               MANUEL RANDEVU OLUŞTUR
             </h3>
             <p className="text-gray-600 text-xs font-bold uppercase tracking-wider mb-6">
-              [{selectedSlotForBooking.startTime.slice(0, 5)} - {selectedSlotForBooking.endTime.slice(0, 5)}] SAATİ İÇİN MÜŞTERİ KAYDI
+              [{toHourMinute(selectedSlotForBooking.startTime)} -{' '}
+              {toHourMinute(selectedSlotForBooking.endTime)}] SAATİ İÇİN MÜŞTERİ KAYDI
             </p>
-
+ 
             <form onSubmit={handleCreateManualBooking} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Müşteri Adı Soyadı</label>
-                <input 
-                  type="text" 
-                  placeholder="Örn. Ahmet Yılmaz" 
+              <FormField label="Müşteri Adı Soyadı">
+                <input
+                  type="text"
+                  placeholder="Örn. Ahmet Yılmaz"
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
-                  className="w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800"
+                  className={INPUT_CLASS}
                   required
                 />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Telefon Numarası</label>
-                <input 
-                  type="tel" 
-                  placeholder="05XX XXX XX XX" 
+              </FormField>
+ 
+              <FormField label="Telefon Numarası">
+                <input
+                  type="tel"
+                  placeholder="05XX XXX XX XX"
                   value={manualPhone}
                   onChange={(e) => setManualPhone(e.target.value)}
-                  className="w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800"
+                  className={INPUT_CLASS}
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Hizmet / Talep</label>
-                <input 
-                  type="text" 
-                  placeholder="Örn. Saç + Sakal Kesimi" 
+              </FormField>
+ 
+              <FormField label="Hizmet / Talep">
+                <input
+                  type="text"
+                  placeholder="Örn. Saç + Sakal Kesimi"
                   value={manualService}
                   onChange={(e) => setManualService(e.target.value)}
-                  className="w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800"
+                  className={INPUT_CLASS}
                   required
                 />
-              </div>
-
+              </FormField>
+ 
               <div className="flex gap-3 pt-4">
-                <button 
+                <button
                   type="button"
-                  onClick={() => {
-                    setSelectedSlotForBooking(null);
-                    setManualName('');
-                    setManualPhone('');
-                    setManualService('');
-                  }}
+                  onClick={resetManualForm}
                   className="flex-1 border-2 border-[#1A1A1A] py-3 font-bold text-[#1A1A1A] hover:bg-gray-200 transition-colors uppercase tracking-wider cursor-pointer"
                 >
                   İptal
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isManualBooking}
                   className="flex-1 bg-[#1A1A1A] border-2 border-[#1A1A1A] text-white py-3 font-bold hover:bg-black transition-colors disabled:opacity-50 uppercase tracking-wider cursor-pointer"
@@ -490,63 +669,56 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
-
+ 
       {/* TEK SLOT OLUŞTURMA MODALI */}
       {isSlotModalOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <ModalOverlay label="Tek Slot Oluştur">
           <div className="bg-[#F5F4EF] p-8 w-full max-w-md shadow-2xl relative border-4 border-[#1A1A1A]">
             <h3 className="text-2xl font-black uppercase tracking-tighter mb-6 text-[#1A1A1A]">
               TEK SLOT OLUŞTUR
             </h3>
-
+ 
             <form onSubmit={handleQuickSlotSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Gün</label>
-                <input 
-                  type="date" 
+              <FormField label="Gün">
+                <input
+                  type="date"
                   value={selectedDate}
                   disabled
                   className="w-full border border-gray-300 p-3 bg-gray-200 font-bold text-gray-700 cursor-not-allowed"
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Başlangıç Saati</label>
-                <input 
-                  type="time" 
+              </FormField>
+ 
+              <FormField label="Başlangıç Saati">
+                <input
+                  type="time"
                   value={quickStart}
                   onChange={(e) => setQuickStart(e.target.value)}
-                  className="w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800"
+                  className={INPUT_CLASS}
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">Bitiş Saati</label>
-                <input 
-                  type="time" 
+              </FormField>
+ 
+              <FormField label="Bitiş Saati">
+                <input
+                  type="time"
                   value={quickEnd}
                   onChange={(e) => setQuickEnd(e.target.value)}
-                  className="w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800"
+                  className={INPUT_CLASS}
                   required
                 />
-              </div>
-
+              </FormField>
+ 
               <div className="flex gap-3 pt-4">
-                <button 
+                <button
                   type="button"
-                  onClick={() => {
-                    setIsSlotModalOpen(false);
-                    setQuickStart('');
-                    setQuickEnd('');
-                  }}
+                  onClick={resetQuickSlotForm}
                   className="flex-1 border-2 border-[#1A1A1A] py-3 font-bold text-[#1A1A1A] hover:bg-gray-200 transition-colors uppercase tracking-wider cursor-pointer"
                 >
                   İptal
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isQuickSlotLoading}
                   className="flex-1 bg-[#1A1A1A] border-2 border-[#1A1A1A] text-white py-3 font-bold hover:bg-black transition-colors disabled:opacity-50 uppercase tracking-wider cursor-pointer"
@@ -556,63 +728,185 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
-
-      {/* YENİ: SLOT SİLME ONAY MODALI */}
-      {slotToDeleteId && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)]">
-            <div className="bg-red-100 border-2 border-red-600 p-4 mb-6">
-              <h3 className="text-2xl font-black uppercase tracking-tighter text-red-600 mb-1">
-                SLOTU SİL
-              </h3>
-              <p className="text-red-800 font-bold text-xs uppercase tracking-wide">
-                Bu boş slotu silmek istediğinize emin misiniz?
-              </p>
-            </div>
-            <div className="flex gap-4">
-              <button
-                onClick={() => setSlotToDeleteId(null)}
-                className="flex-1 border-2 border-[#1A1A1A] bg-white text-[#1A1A1A] py-3 font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors cursor-pointer"
-              >
-                Vazgeç
-              </button>
-              <button
-                onClick={executeDeleteSlot}
-                className="flex-1 border-2 border-red-600 bg-red-600 text-white py-3 font-bold uppercase tracking-wider hover:bg-red-700 transition-colors cursor-pointer"
-              >
-                Evet, Sil
-              </button>
-            </div>
-          </div>
-        </div>
+ 
+      {/* RANDEVU İPTAL ONAY MODALI */}
+      {appointmentToCancel !== null && (
+        <ConfirmModal
+          variant="danger"
+          title="RANDEVUYU İPTAL ET"
+          message="Bu randevuyu iptal etmek istediğinize emin misiniz?"
+          confirmLabel="Evet, İptal Et"
+          onCancel={() => setAppointmentToCancel(null)}
+          onConfirm={executeCancel}
+        />
       )}
-
-      {/* YENİ: ÖZEL BİLDİRİM VE HATA MODALI */}
-      {modalConfig.isOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+ 
+      {/* SLOT SİLME ONAY MODALI */}
+      {slotToDeleteId !== null && (
+        <ConfirmModal
+          variant="danger"
+          title="SLOTU SİL"
+          message="Bu boş slotu silmek istediğinize emin misiniz?"
+          confirmLabel="Evet, Sil"
+          onCancel={() => setSlotToDeleteId(null)}
+          onConfirm={executeDeleteSlot}
+        />
+      )}
+ 
+      {/* KARA LİSTE ONAY MODALI */}
+      {customerToBanPhone !== null && (
+        <ConfirmModal
+          variant="dark"
+          title="KARA LİSTEYE AL"
+          message={`${customerToBanPhone} numaralı müşteriyi kalıcı olarak engellemek istediğinize emin misiniz? Bir daha randevu alamayacak.`}
+          confirmLabel="Evet, Banla"
+          onCancel={() => setCustomerToBanPhone(null)}
+          onConfirm={executeBanCustomer}
+        />
+      )}
+ 
+      {/* BİLDİRİM VE HATA MODALI */}
+      {feedback.isOpen && (
+        <ModalOverlay label={feedback.title}>
           <div className="bg-[#F5F4EF] border-4 border-[#1A1A1A] p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(26,26,26,1)]">
-            <div className={`inline-block px-3 py-1 text-xs font-black uppercase tracking-widest text-white mb-4 ${
-              modalConfig.type === 'success' ? 'bg-[#1A1A1A]' : 'bg-red-600'
-            }`}>
-              {modalConfig.type === 'success' ? 'BAŞARILI' : 'HATA'}
+            <div
+              className={`inline-block px-3 py-1 text-xs font-black uppercase tracking-widest text-white mb-4 ${
+                feedback.type === 'success' ? 'bg-[#1A1A1A]' : 'bg-red-600'
+              }`}
+            >
+              {feedback.type === 'success' ? 'BAŞARILI' : 'HATA'}
             </div>
             <h3 className="text-2xl font-black uppercase tracking-tighter text-[#1A1A1A] mb-2">
-              {modalConfig.title}
+              {feedback.title}
             </h3>
-            <p className="text-gray-700 font-bold text-sm mb-6">
-              {modalConfig.message}
-            </p>
+            <p className="text-gray-700 font-bold text-sm mb-6">{feedback.message}</p>
             <button
-              onClick={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
+              onClick={() => setFeedback((prev) => ({ ...prev, isOpen: false }))}
               className="w-full bg-[#1A1A1A] text-white py-3 font-black uppercase tracking-widest border-2 border-[#1A1A1A] hover:bg-black transition-colors cursor-pointer"
             >
               TAMAM
             </button>
           </div>
-        </div>
+        </ModalOverlay>
       )}
+    </div>
+  );
+}
+ 
+/* -------------------------------------------------------------------------- */
+/*  Yardımcı Alt Bileşenler                                                   */
+/* -------------------------------------------------------------------------- */
+ 
+const INPUT_CLASS =
+  'w-full border border-gray-300 p-3 outline-none focus:border-[#1A1A1A] transition-colors bg-white font-medium text-gray-800';
+ 
+function FormField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-bold mb-1 text-[#1A1A1A]">{label}</label>
+      {children}
+    </div>
+  );
+}
+ 
+interface AppointmentRowProps {
+  appointment: Appointment;
+  onCancel: (id: number) => void;
+  onBan: (phone: string) => void;
+}
+ 
+function AppointmentRow({ appointment, onCancel, onBan }: AppointmentRowProps) {
+  const isCancelled = appointment.status === 'CANCELLED';
+ 
+  const disabledClass = 'border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed opacity-60';
+  const baseButtonClass =
+    'border-2 font-black text-[10px] md:text-xs px-3 py-2 uppercase tracking-wider transition-colors';
+ 
+  return (
+    <div className="flex-1 bg-[#F5F4EF] border border-transparent p-4 mx-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <p className="font-bold text-[#1A1A1A] text-sm mb-1 flex items-center flex-wrap gap-2">
+          <span>
+            [{appointment.customerName}] • {appointment.customerPhone}
+          </span>
+          <span className="text-gray-300">•</span>
+          <span
+            className={`text-xs uppercase tracking-widest font-black ${getStatusStyle(
+              appointment.status
+            )}`}
+          >
+            {appointment.status}
+          </span>
+        </p>
+        <p className="text-gray-500 text-xs">{appointment.serviceType}</p>
+      </div>
+ 
+      <div className="flex flex-col sm:flex-row gap-2 mt-3 md:mt-0">
+        <button
+          onClick={() => onCancel(appointment.id)}
+          disabled={isCancelled}
+          className={`${baseButtonClass} ${
+            isCancelled
+              ? disabledClass
+              : 'border-red-600 text-red-600 bg-transparent hover:bg-red-600 hover:text-white cursor-pointer'
+          }`}
+          title="Randevuyu İptal Et"
+        >
+          İPTAL ET
+        </button>
+ 
+        <button
+          onClick={() => onBan(appointment.customerPhone)}
+          disabled={isCancelled}
+          className={`${baseButtonClass} ${
+            isCancelled
+              ? disabledClass
+              : 'border-[#1A1A1A] text-[#1A1A1A] bg-transparent hover:bg-[#1A1A1A] hover:text-white cursor-pointer'
+          }`}
+          title="Müşteriyi Kara Listeye Ekle"
+        >
+          KARA LİSTEYE AL
+        </button>
+      </div>
+    </div>
+  );
+}
+ 
+interface EmptySlotRowProps {
+  slot: TimeSlot;
+  onAddAppointment: (slot: TimeSlot) => void;
+  onDelete: (slotId: number) => void;
+}
+ 
+function EmptySlotRow({ slot, onAddAppointment, onDelete }: EmptySlotRowProps) {
+  return (
+    <div className="flex-1 mx-4 text-gray-600 font-medium text-sm flex items-center justify-between bg-gray-50/50 p-4 border border-dashed border-gray-200">
+      <div className="flex items-center gap-3">
+        <span className="text-gray-400 font-bold">Boş Slot</span>
+ 
+        <button
+          onClick={() => onAddAppointment(slot)}
+          className="bg-[#1A1A1A] text-white px-3 py-1 text-xs font-bold uppercase tracking-wider hover:bg-black transition-colors flex items-center gap-1 cursor-pointer"
+          title="Telefonla Arayan Müşteri İçin Randevu Ekle"
+        >
+          <span className="text-sm font-black">+</span>
+          <span>Randevu Ekle</span>
+        </button>
+ 
+        <button
+          onClick={() => onDelete(slot.id)}
+          className="border border-red-600 text-red-600 px-3 py-1 text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
+          title="Bu Slotu Sil"
+        >
+          Slot Sil
+        </button>
+      </div>
+ 
+      <span className="text-xs text-gray-400 font-mono">
+        {toHourMinute(slot.startTime)} - {toHourMinute(slot.endTime)}
+      </span>
     </div>
   );
 }

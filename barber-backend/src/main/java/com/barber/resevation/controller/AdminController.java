@@ -77,6 +77,7 @@ public class AdminController {
 
         return ResponseEntity.ok("Seçilen tarihteki boş slotlar başarıyla temizlendi.");
     }
+
     // Berberin boş slot silmesi: DELETE /api/v1/admin/slots/{id}
     @DeleteMapping("/slots/{id}")
     public ResponseEntity<Void> deleteSlot(
@@ -93,6 +94,22 @@ public class AdminController {
         try {
             adminService.updateSecurityInfo(adminId, request);
             return ResponseEntity.ok("Güvenlik bilgileri başarıyla güncellendi.");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    /* --- MÜŞTERİ YÖNETİMİ (KARA LİSTE) --- */
+
+    @PostMapping("/ban-customer")
+    public ResponseEntity<?> banCustomer(
+            @RequestParam("shopId") Long shopId,
+            @RequestParam("phone") String phone,
+            @RequestParam(value = "reason", defaultValue = "Randevuya gelmedi") String reason) {
+        try {
+            // İş mantığını Controller'dan çıkarıp Service'e devrettik
+            adminService.banCustomer(shopId, phone, reason);
+            return ResponseEntity.ok("Müşteri başarıyla kara listeye eklendi.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

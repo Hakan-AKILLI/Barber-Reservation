@@ -172,7 +172,7 @@ export default function AdminCalendar() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto relative">
+    <div className="max-w-7xl mx-auto relative">
       <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-8 text-[#1A1A1A]">
         TAKVİM
       </h2>

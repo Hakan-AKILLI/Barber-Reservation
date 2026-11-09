@@ -180,3 +180,10 @@ export const closeDaySlots = async (shopId: number, date: string) => {
   const response = await api.delete(`/admin/slots/by-date/${shopId}/${date}`);
   return response.data;
 };
+// Müşteriyi Kara Listeye Ekleme
+export const banCustomer = async (shopId: number, phone: string, reason: string = 'Randevuya gelmedi') => {
+  const response = await api.post('/admin/ban-customer', null, {
+    params: { shopId, phone, reason }
+  });
+  return response.data;
+};

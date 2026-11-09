@@ -110,9 +110,9 @@ export default function AdminSettings() {
   if (loading) return <div className="animate-pulse font-bold text-gray-500 p-8">Ayarlar yükleniyor...</div>;
 
   return (
-    <div className="max-w-5xl mx-auto relative min-h-screen">
+    <div className="max-w-7xl mx-auto relative min-h-screen">
       <div className="flex items-center justify-between mb-8">
-        <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase text-[#1A1A1A]">
+        <h2 className="text-6xl md:text-5xl font-black tracking-tighter uppercase text-[#1A1A1A]">
           AYARLAR
         </h2>
       </div>
