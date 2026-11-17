@@ -1,6 +1,6 @@
 # Barber Reservation
  
-Berberler için geliştirilmiş, uçtan uca bir randevu yönetim sistemi. Müşteriler bir dükkanın sayfasından uygun saatleri görüp randevu alabilir; berber ise yönetim panelinden çalışma saatlerini, randevuları ve kara listeyi yönetir.
+Berberler için geliştirilmiş, uçtan  uca bir randevu yönetim sistemi. Müşteriler bir dükkanın sayfasından uygun saatleri görüp randevu alabilir; berber ise yönetim panelinden çalışma saatlerini, randevuları ve kara listeyi yönetir.
  
 Backend Spring Boot ile REST API olarak, frontend React ve TypeScript ile tek sayfalık uygulama olarak yazılmıştır.
  
